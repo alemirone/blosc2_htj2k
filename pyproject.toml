@@ -59,9 +59,9 @@ skip = "*-manylinux_i686 *_ppc64le *_s390x *-musllinux* cp313t-*"
 # to include GCC 11 (actually, GCC 12)
 manylinux-x86_64-image = "manylinux_2_28"
 manylinux-aarch64-image = "manylinux_2_28"
-repair-wheel-command = ""
 
 [tool.scikit-build]
 # Python ABI compatibility should not be a problem for Blosc plugins
+wheel.py-api = "py3"
 # Exclude grok static library and headers from wheel (already linked into libblosc2_grok.so)
 wheel.exclude = ["_unused_grok_lib", "_unused_grok_include"]
