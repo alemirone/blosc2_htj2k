@@ -35,6 +35,7 @@ jobs:
         uses: pypa/cibuildwheel@v2.22.0
         env:
           CIBW_BEFORE_BUILD: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements-build.txt
+          CIBW_ENVIRONMENT: CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
           CIBW_BUILD: 'cp313-*'
           CIBW_BEFORE_TEST: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements-test.txt
           CIBW_TEST_COMMAND: /bin/sh -c "cd /tmp && BLOSC_TRACE=1 python3 -m pytest {project}/tests"
@@ -103,7 +104,7 @@ jobs:
         uses: pypa/cibuildwheel@v2.22.0
         env:
           CIBW_BEFORE_BUILD: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements-build.txt
-          CIBW_ENVIRONMENT: DONT_BUILD_EXAMPLES=1
+          CIBW_ENVIRONMENT: CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5" DONT_BUILD_EXAMPLES=1
           CIBW_BUILD: 'cp313-*'
           CIBW_BEFORE_TEST: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements-test.txt
           CIBW_TEST_COMMAND: /bin/sh -c "cd /tmp && BLOSC_TRACE=1 python3 -m pytest {project}/tests"
@@ -136,7 +137,7 @@ jobs:
         uses: pypa/cibuildwheel@v2.22.0
         env:
           CIBW_BEFORE_BUILD: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements-build.txt
-          CIBW_ENVIRONMENT: CMAKE_OSX_ARCHITECTURES=arm64
+          CIBW_ENVIRONMENT: CMAKE_OSX_ARCHITECTURES=arm64 CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
           CIBW_BUILD: 'cp313-*'
           CIBW_BEFORE_TEST: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements-test.txt
           CIBW_TEST_COMMAND: /bin/sh -c "cd /tmp && BLOSC_TRACE=1 python3 -m pytest {project}/tests"
@@ -174,6 +175,7 @@ jobs:
         uses: pypa/cibuildwheel@v2.22.0
         env:
           CIBW_BEFORE_ALL: python -m pip install -r requirements-build.txt
+          CIBW_ENVIRONMENT: CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
           CIBW_BUILD: 'cp312-win_amd64'
           # Windows tests are currently disabled (wheel is built but not tested) as some fail for unkown reason.
           # Uncomment the lines below to re-enable Windows tests.

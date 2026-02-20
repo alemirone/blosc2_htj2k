@@ -22,7 +22,7 @@ Testing
 Follow the steps in README-DEVELOPERS.md file for locally creating and
 installing the wheel, then test it::
 
-  $ pytest
+  $ python -m pytest
 
 Also::
 

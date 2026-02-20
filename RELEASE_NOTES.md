@@ -2,8 +2,7 @@
 
 ## Changes from 0.3.3 to 0.3.4
 
-* Implement PEP 427 wheel layout format and general cleanup of installation
-* Changes to standardise CI/CD workflow
+#XXX version-specific blurb XXX#
 
 ## Changes from 0.3.2 to 0.3.3
 
