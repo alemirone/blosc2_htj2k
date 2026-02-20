@@ -54,8 +54,14 @@ if (MSVC OR MINGW)
 endif()
 
 target_include_directories(blosc2_grok PUBLIC ${BLOSC2_INCLUDE_DIR})
-# link to grok and to blosc2 (link to blosc2 necessary for Windows and macOS)
-target_link_libraries(blosc2_grok grokj2k ${BLOSC2_LIBRARIES})
+# link to grok but not to blosc2 (on linux)
+target_link_libraries(blosc2_grok PRIVATE grokj2k)
+
+if(APPLE OR WIN32)
+    # On Windows and macOS easiest to just link to Blosc2 explicitly
+    target_link_libraries(blosc2_grok PRIVATE ${BLOSC2_LIBRARIES})
+endif()
+# Link to blosc2 necessary for Windows
 
 # Add runtime path just in case (e.g. load plugin before blosc2 for example)
 # will not always be used, but if can't find blosc2 gives another thing to check

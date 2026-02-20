@@ -1,0 +1,2 @@
+_b2nd_deserialize_meta
+_blosc2_meta_get
