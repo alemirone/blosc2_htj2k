@@ -61,10 +61,6 @@ if(APPLE)
     set_target_properties(blosc2_grok PROPERTIES
         LINK_FLAGS "-undefined dynamic_lookup"
     )
-    # enable global visibility of blosc2 functions
-    set_target_properties(${BLOSC2_LIBRARIES} PROPERTIES
-        LINK_FLAGS "-undefined dynamic_lookup -flat_namespace"
-    )
 elseif(WIN32)
     # On Windows, must link to Blosc2 explicitly
     target_link_libraries(blosc2_grok PRIVATE ${BLOSC2_LIBRARIES})
