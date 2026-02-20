@@ -14,7 +14,7 @@ from pathlib import Path
 import atexit
 import numpy as np
 
-__version__ = "0.3.4.dev0"
+__version__ = "0.3.4"
 
 # On Windows, pre-load blosc2.dll before loading blosc2_grok.dll
 if platform.system() == "Windows":
