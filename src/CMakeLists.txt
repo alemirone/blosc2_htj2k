@@ -62,7 +62,7 @@ if(APPLE)
         LINK_FLAGS "-undefined dynamic_lookup"
     )
     # enable global visibility of blosc2 functions
-    set_target_properties(blosc2 PROPERTIES
+    set_target_properties(${BLOSC2_LIBRARIES} PROPERTIES
         LINK_FLAGS "-undefined dynamic_lookup -flat_namespace"
     )
 elseif(WIN32)
