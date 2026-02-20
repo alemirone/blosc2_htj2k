@@ -78,7 +78,11 @@ else()
 endif()
 
 if(APPLE) # have to explicitly make these symbols visible to allow for tests to run
-    set_target_properties(BLOSC2_LIBRARIES PROPERTIES
+    add_library(blosc2_imported SHARED IMPORTED)
+    set_target_properties(blosc2_imported PROPERTIES
+        IMPORTED_LOCATION "${BLOSC2_LIBRARY}"
+    )
+    set_target_properties(blosc2_imported PROPERTIES
         LINK_FLAGS "-undefined dynamic_lookup -Wl,-exported_symbols_list,${CMAKE_CURRENT_SOURCE_DIR}/blosc2_symbols.txt"
     )
 endif()
