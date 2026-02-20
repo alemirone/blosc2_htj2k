@@ -65,7 +65,6 @@ if(APPLE)
     set_target_properties(blosc2 PROPERTIES
         LINK_FLAGS "-undefined dynamic_lookup -flat_namespace"
     )
-endif()
 elseif(WIN32)
     # On Windows, must link to Blosc2 explicitly
     target_link_libraries(blosc2_grok PRIVATE ${BLOSC2_LIBRARIES})
