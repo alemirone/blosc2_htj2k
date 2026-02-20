@@ -36,7 +36,7 @@ jobs:
         env:
           CIBW_BEFORE_BUILD: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements-build.txt
           CIBW_ENVIRONMENT: CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
-          CIBW_BUILD: 'cp313-*'
+          CIBW_BUILD: 'cp313-manylinux_x86_64'
           CIBW_BEFORE_TEST: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements-test.txt
           CIBW_TEST_COMMAND: /bin/sh -c "cd /tmp && BLOSC_TRACE=1 python3 -m pytest {project}/tests"
           CIBW_ARCHS_LINUX: x86_64
