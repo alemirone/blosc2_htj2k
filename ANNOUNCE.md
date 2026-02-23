@@ -1,10 +1,7 @@
-Announcing blosc2-grok 0.3.3
+Announcing blosc2-grok 0.3.4
 ============================
 
-This is a patch release. We have changed the Python extension
-from MODULE to SHARED on some platforms (Linux and MacOSX/arm64;
-the rest do not seem to support SHARED mode).  This allows for
-a C program to use the plugin as a shared library.
+This is a patch release. The main change is to implement the PEP 427 wheel layout format and general cleanup of installation which should be more robust, and also make it easier to build C applications from the shipped wheel.
 
 You can have a look at the release notes in:
 
