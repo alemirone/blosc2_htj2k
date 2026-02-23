@@ -24,6 +24,8 @@ installing the wheel, then test it::
 
   $ python -m pytest
 
+If ``import`` fails to find ``libblosc2_grok.so``, try changing the name of the ``blosc2_grok`` directory to ``blosc2-grok``, run ``pytest``, and then change it back.
+
 Also::
 
   $ cd examples
