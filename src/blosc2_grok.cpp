@@ -206,8 +206,10 @@ int blosc2_grok_encoder(
             break;
         }
     }
-    uint32_t dimX = blockshape[igdim];
-    uint32_t dimY = blockshape[igdim + 1];
+    // Blosc2 b2nd stores image-like tensors as (..., Y, X[, C]).
+    // Map explicitly to codec (X, Y) convention.
+    uint32_t dimY = blockshape[igdim];
+    uint32_t dimX = blockshape[igdim + 1];
     uint32_t numComps = 1;
     if ((ndim - igdim) == 3) {
         // Single image with more than 1 component
