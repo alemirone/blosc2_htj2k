@@ -2,7 +2,7 @@
 
 ## Changes from 0.3.4 to 0.3.5
 
-#XXX version-specific blurb XXX#
+* Bug fix for switched row/col dimensions (PR #20, thanks to @alemirone)
 
 ## Changes from 0.3.3 to 0.3.4
 

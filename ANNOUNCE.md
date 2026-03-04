@@ -1,7 +1,7 @@
-Announcing blosc2-grok 0.3.4
+Announcing blosc2-grok 0.3.5
 ============================
 
-This is a patch release. The main change is to implement the PEP 427 wheel layout format and general cleanup of installation which should be more robust, and also make it easier to build C applications from the shipped wheel.
+This is a patch release. The only change is a bug fix for incorrectly intepreted row/col dimensions for images.
 
 You can have a look at the release notes in:
 
