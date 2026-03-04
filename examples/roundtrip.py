@@ -49,7 +49,7 @@ def compress(im, urlpath=None, **kwargs):
     # Print information about the array, see the compression ratio (cratio)
     print(bl_array.info)
 
-    # np.testing.assert_array_equal(bl_array[:], np_array)
+    np.testing.assert_array_equal(bl_array[:], np_array)
 
     return bl_array
 
@@ -64,26 +64,14 @@ if __name__ == '__main__':
 
     quality_mode = 'rates'
     # quality_mode = 'dB'
-    quality_layers = np.array([10], dtype=np.float64)
+    quality_layers = np.array([5], dtype=np.float64)
     kwargs = {'cod_format': blosc2_grok.GrkFileFmt.GRK_FMT_JP2,
               'verbose': True,
-              'quality_mode': quality_mode,
-              'quality_layers': quality_layers,
+            #   'quality_mode': quality_mode,
+            #   'quality_layers': quality_layers,
               }
     print(kwargs)
 
     im = Image.open(args.inputfile)
 
     array = compress(im, **kwargs)
-    nparray = np.asarray(im)
-    print(round(np.linalg.norm(array[:] - nparray)))
-
-# 0.3.5.dev0
-# MI04_020751.tif : 60.114.046
-# kodim23.png : 153.763
-# eight.png : 0
-
-# 0.3.4
-# MI04_020751.tif : 59.949.969
-# kodim23.png : 169.903
-# eight.png : 148.480
