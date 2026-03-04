@@ -14,6 +14,7 @@ from pathlib import Path
 
 
 import blosc2
+import blosc2_grok
 
 project_dir = Path(__file__).parent.parent
 @pytest.mark.parametrize('image', [project_dir / 'examples/kodim23.png', project_dir / 'examples/MI04_020751.tif'])
