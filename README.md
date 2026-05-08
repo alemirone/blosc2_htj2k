@@ -38,8 +38,7 @@ im = Image.open("examples/kodim23.png")
 # Convert the image to a numpy array
 np_array = np.asarray(im)
 
-# Transform the numpy array to a blosc2 array. This is where compression happens, and
-# the HTJ2K codec is called.
+# Transform the numpy array to a blosc2 array. This is where compression happens.
 bl_array = blosc2.asarray(
     np_array,
     chunks=np_array.shape,
@@ -109,6 +108,56 @@ cparams = {
     'splitmode': blosc2.SplitMode.NEVER_SPLIT,
 }
 ```
+
+## Runtime replacement backends
+
+By default, `blosc2_grok` encodes and decodes JPEG2000 chunks with its bundled
+Grok backend.  If `BLOSC2_GROK_REPLACEMENT_DIR` is not set, the normal Grok path
+is used.  A different backend can be loaded at runtime by setting
+`BLOSC2_GROK_REPLACEMENT_DIR` to a directory containing a shared library that
+exports the `J2K_CODEC_PLUGIN` symbol defined in `src/plugin/j2k_codec_api.h`
+and matches the plugin ABI version declared there.
+
+The source tree always builds and installs a small Grok replacement backend in
+`blosc2_grok/plugins/grok`.  This backend is intentionally equivalent to the
+native path and is useful for testing the replacement mechanism.
+
+If Kakadu headers and libraries are available at build time, CMake also builds
+`libblosc2_kakadu_backend` and installs it in `blosc2_grok/plugins/kakadu`.
+Kakadu discovery can be configured with `KAKADU_ROOT`, `KAKADU_INCLUDE_DIR` and
+`KAKADU_LIBRARY_DIR` (or `KAKADU_LIB_PATH`).  At runtime, the Kakadu libraries
+must still be discoverable by the dynamic loader.
+
+For example, to force the reference Grok replacement backend from an installed
+wheel:
+
+```bash
+export BLOSC2_GROK_REPLACEMENT_DIR="$(python -c 'from importlib import metadata; from pathlib import Path; print(Path(metadata.distribution("blosc2_grok").locate_file("blosc2_grok/plugins/grok")).resolve())')"
+```
+
+To use the Kakadu backend, point `BLOSC2_GROK_REPLACEMENT_DIR` to the installed
+Kakadu backend directory and also expose the Kakadu runtime libraries:
+
+```bash
+export BLOSC2_GROK_REPLACEMENT_DIR="$(python -c 'from importlib import metadata; from pathlib import Path; print(Path(metadata.distribution("blosc2_grok").locate_file("blosc2_grok/plugins/kakadu")).resolve())')"
+export LD_LIBRARY_PATH="/path/to/kakadu/lib:${LD_LIBRARY_PATH}"
+```
+
+On macOS, use `DYLD_LIBRARY_PATH` instead of `LD_LIBRARY_PATH`.  On Windows,
+add the directory containing the Kakadu DLLs to `PATH` before starting Python or
+the host application.
+
+When reading or writing through HDF5, the HDF5 Blosc2 filter must also be
+discoverable:
+
+```bash
+export HDF5_PLUGIN_PATH="$(python -c 'import hdf5plugin; print(hdf5plugin.PLUGIN_PATH)')"
+```
+
+If the dynamic loader reports that a shared object or DLL cannot be opened, the
+replacement backend was found but one of its dependent libraries was not.  In
+practice, this usually means the Kakadu library directory is missing from
+`LD_LIBRARY_PATH`, `DYLD_LIBRARY_PATH` or `PATH`, depending on the platform.
 
 ## Notes
 
