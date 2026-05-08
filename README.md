@@ -113,7 +113,10 @@ cparams = {
 
 By default, `blosc2_grok` encodes and decodes JPEG2000 chunks with its bundled
 Grok backend.  If `BLOSC2_GROK_REPLACEMENT_DIR` is not set, the normal Grok path
-is used.  A different backend can be loaded at runtime by setting
+is used for regular J2K.  HTJ2K requests that are not reliable in the native
+Grok path, such as `uint16` HTJ2K, fail with an explicit error instead of
+silently producing data through the wrong backend.  A different backend can be
+loaded at runtime by setting
 `BLOSC2_GROK_REPLACEMENT_DIR` to a directory containing a shared library that
 exports the `J2K_CODEC_PLUGIN` symbol defined in `src/plugin/j2k_codec_api.h`
 and matches the plugin ABI version declared there.
@@ -127,6 +130,23 @@ If Kakadu headers and libraries are available at build time, CMake also builds
 Kakadu discovery can be configured with `KAKADU_ROOT`, `KAKADU_INCLUDE_DIR` and
 `KAKADU_LIBRARY_DIR` (or `KAKADU_LIB_PATH`).  At runtime, the Kakadu libraries
 must still be discoverable by the dynamic loader.
+
+If OpenHTJ2K headers and libraries are available at build time, CMake also
+builds `libblosc2_openhtj2k_backend` and installs it in
+`blosc2_grok/plugins/openhtj2k`.  OpenHTJ2K discovery can be configured with
+`OPENHTJ2K_ROOT`, `OPENHTJ2K_INCLUDE_DIR` and `OPENHTJ2K_LIBRARY_DIR` (or
+`OPENHTJ2K_LIB_PATH`).  The development `installation_script.sh` can build and
+install OpenHTJ2K PR #190 into `../openhtj2k_pr190_install` before building
+`blosc2_grok`; set `BUILD_OPENHTJ2K_PR190=0` to skip that step.
+
+Backend capabilities:
+
+| Backend | Built when | J2K | HTJ2K | `uint8` | `uint16` |
+| --- | --- | --- | --- | --- | --- |
+| native Grok | always | yes | limited | yes | J2K only |
+| `plugins/grok` | always | yes | limited | yes | J2K only |
+| `plugins/kakadu` | Kakadu found | yes | yes | yes | yes |
+| `plugins/openhtj2k` | OpenHTJ2K found | no encode | yes | yes | yes, with PR #190 or newer |
 
 For example, to force the reference Grok replacement backend from an installed
 wheel:
@@ -143,9 +163,16 @@ export BLOSC2_GROK_REPLACEMENT_DIR="$(python -c 'from importlib import metadata;
 export LD_LIBRARY_PATH="/path/to/kakadu/lib:${LD_LIBRARY_PATH}"
 ```
 
+To use the OpenHTJ2K backend:
+
+```bash
+export BLOSC2_GROK_REPLACEMENT_DIR="$(python -c 'from importlib import metadata; from pathlib import Path; print(Path(metadata.distribution("blosc2_grok").locate_file("blosc2_grok/plugins/openhtj2k")).resolve())')"
+export LD_LIBRARY_PATH="/path/to/openhtj2k/lib:${LD_LIBRARY_PATH}"
+```
+
 On macOS, use `DYLD_LIBRARY_PATH` instead of `LD_LIBRARY_PATH`.  On Windows,
-add the directory containing the Kakadu DLLs to `PATH` before starting Python or
-the host application.
+add the directory containing the Kakadu or OpenHTJ2K DLLs to `PATH` before
+starting Python or the host application.
 
 When reading or writing through HDF5, the HDF5 Blosc2 filter must also be
 discoverable:
@@ -156,7 +183,7 @@ export HDF5_PLUGIN_PATH="$(python -c 'import hdf5plugin; print(hdf5plugin.PLUGIN
 
 If the dynamic loader reports that a shared object or DLL cannot be opened, the
 replacement backend was found but one of its dependent libraries was not.  In
-practice, this usually means the Kakadu library directory is missing from
+practice, this usually means the backend library directory is missing from
 `LD_LIBRARY_PATH`, `DYLD_LIBRARY_PATH` or `PATH`, depending on the platform.
 
 ## Notes

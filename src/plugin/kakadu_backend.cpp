@@ -160,16 +160,21 @@ bool kakadu_extra_has_param(const char *param) {
     return s.find(p) != std::string::npos;
 }
 
-void apply_kakadu_mode(siz_params &siz) {
+void apply_kakadu_mode(siz_params &siz, bool htj2k) {
     const bool debug = std::getenv("BLOSC2_GROK_DEBUG") != nullptr;
-    siz.parse_string("Sncap=P15");
 
     // Apply coding mode. (We ensure canvas/tile coordinates are set explicitly
     // in `set_siz_params`, so Kakadu can safely copy SIZ parameters when other
     // clusters are instantiated by `parse_string` calls below.)
-    siz.parse_string("Cmodes=0");
+    if (htj2k) {
+        siz.parse_string("Scap=P15");
+        siz.parse_string("Cmodes=HT");
+    } else {
+        siz.parse_string("Sncap=P15");
+        siz.parse_string("Cmodes=0");
+    }
     if (debug) {
-        fprintf(stderr, "[blosc2_grok] Kakadu mode: J2K\n");
+        fprintf(stderr, "[blosc2_grok] Kakadu mode: %s\n", htj2k ? "HTJ2K" : "J2K");
     }
 }
 
@@ -411,6 +416,26 @@ bool set_siz_params(siz_params &siz, int64_t width, int64_t height,
 
 }  // namespace
 
+extern "C" int blosc2_kakadu_supports(const j2k_codec_request_t *request) {
+    if (request == nullptr) {
+        return 0;
+    }
+    if (!(request->codec_kind == J2K_CODEC_KIND_J2K ||
+          request->codec_kind == J2K_CODEC_KIND_HTJ2K ||
+          request->codec_kind == J2K_CODEC_KIND_UNKNOWN)) {
+        return 0;
+    }
+    if (request->precision_bits != 0 &&
+        !(request->precision_bits == 8 || request->precision_bits == 16)) {
+        return 0;
+    }
+    if (request->num_components != 0 &&
+        !(request->num_components == 1 || request->num_components == 3)) {
+        return 0;
+    }
+    return 1;
+}
+
 extern "C" int blosc2_kakadu_encoder(
     const uint8_t *input,
     int32_t input_len,
@@ -418,7 +443,8 @@ extern "C" int blosc2_kakadu_encoder(
     int32_t output_len,
     uint8_t meta,
     blosc2_cparams* cparams,
-    const void* /*chunk*/
+    const void* /*chunk*/,
+    const j2k_codec_request_t *request
 ) {
     const bool debug = std::getenv("BLOSC2_GROK_DEBUG") != nullptr;
     ensure_kakadu_handlers(debug);
@@ -427,11 +453,15 @@ extern "C" int blosc2_kakadu_encoder(
         fprintf(stderr, "[blosc2_grok] Kakadu tune: force_precise=%d want_fastest=%d threads=%d\n",
                 tune.force_precise ? 1 : 0, tune.want_fastest ? 1 : 0, tune.threads);
     }
-    // Always use JP2 container format for Grok API compatibility
-    bool write_jp2 = true;
+    const bool htj2k = request && request->codec_kind == J2K_CODEC_KIND_HTJ2K;
+    // J2K keeps the existing JP2 container path.  HTJ2K is emitted as a raw
+    // Part-15 codestream because this transparent chunk format does not need a
+    // JPH file wrapper.
+    bool write_jp2 = !htj2k;
     if (debug) {
-        fprintf(stderr, "[blosc2_grok] Kakadu encoder path selected (%s)\n",
-                write_jp2 ? "JP2 container" : "J2K raw codestream");
+        fprintf(stderr, "[blosc2_grok] Kakadu encoder path selected (%s, %s)\n",
+                htj2k ? "HTJ2K" : "J2K",
+                write_jp2 ? "JP2 container" : "raw codestream");
     }
     int64_t dim_x = 0;
     int64_t dim_y = 0;
@@ -504,7 +534,7 @@ extern "C" int blosc2_kakadu_encoder(
             cod_holder = std::make_unique<cod_params>();
             cod_holder->link(&siz, -1, -1, 0, 0);
         }
-        apply_kakadu_mode(siz);
+        apply_kakadu_mode(siz, htj2k);
         siz.finalize_all();
         if (write_jp2) {
             family = std::make_unique<jp2_family_tgt>();
@@ -625,7 +655,8 @@ extern "C" int blosc2_kakadu_decoder(
     int32_t output_len,
     uint8_t /*meta*/,
     blosc2_dparams * /*dparams*/,
-    const void * /*chunk*/
+    const void * /*chunk*/,
+    const j2k_codec_request_t * /*request*/
 ) {
     const bool debug = std::getenv("BLOSC2_GROK_DEBUG") != nullptr;
     ensure_kakadu_handlers(debug);

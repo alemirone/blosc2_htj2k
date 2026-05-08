@@ -16,6 +16,16 @@
 #include "blosc2_grok.h"
 #include "blosc2_grok_public.h"
 
+static int grok_plugin_supports(const j2k_codec_request_t *request) {
+    if (request == nullptr) {
+        return 0;
+    }
+    if (request->codec_kind == J2K_CODEC_KIND_HTJ2K && request->precision_bits > 8) {
+        return 0;
+    }
+    return 1;
+}
+
 static int grok_plugin_encode(
     const uint8_t *input,
     int32_t input_len,
@@ -23,7 +33,8 @@ static int grok_plugin_encode(
     int32_t output_len,
     uint8_t meta,
     blosc2_cparams* cparams,
-    const void* chunk
+    const void* chunk,
+    const j2k_codec_request_t* /*request*/
 ) {
     return blosc2_grok_native_encoder(input, input_len, output, output_len, meta, cparams, chunk);
 }
@@ -35,7 +46,8 @@ static int grok_plugin_decode(
     int32_t output_len,
     uint8_t meta,
     blosc2_dparams *dparams,
-    const void *chunk
+    const void *chunk,
+    const j2k_codec_request_t* /*request*/
 ) {
     return blosc2_grok_native_decoder(input, input_len, output, output_len, meta, dparams, chunk);
 }
@@ -47,6 +59,7 @@ J2K_CODEC_PLUGIN_EXPORT j2k_codec_plugin_t J2K_CODEC_PLUGIN = {
     "grok",
     "0.3.6",
     {
+        grok_plugin_supports,
         grok_plugin_encode,
         grok_plugin_decode
     },

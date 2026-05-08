@@ -38,7 +38,7 @@
 #include "blosc2_grok_public.h"
 
 // Minimal C ABI known by the core codec.  Backend-specific details, such as
-// Kakadu, stay behind this interface.
+// Kakadu or OpenHTJ2K, stay behind this interface.
 #include "j2k_codec_api.h"
 
 #ifdef BLOSC2_MAX_DIM
@@ -58,7 +58,8 @@ using plugin_library_handle_t = void*;
 
 // Runtime replacement backend state.  `s_replacement_plugin` points to the
 // exported J2K_CODEC_PLUGIN descriptor inside the loaded backend library; it can
-// describe the reference Grok backend or an optional backend such as Kakadu.
+// describe the reference Grok backend or an optional backend such as Kakadu or
+// OpenHTJ2K.
 // Two pointers are needed because they have different roles: the plugin pointer
 // is the callable ABI object used by the codec, while the handle is the dynamic
 // loader ownership token that must be kept for dlclose()/FreeLibrary().  Keeping
@@ -106,6 +107,123 @@ void ensure_grok_initialized(uint32_t nthreads = 0, bool verbose = false) {
 std::mutex &replacement_plugin_mutex() {
     static std::mutex plugin_mutex;
     return plugin_mutex;
+}
+
+// Return whether the current Grok compression parameters request HTJ2K block
+// coding.  The core only interprets generic JPEG2000-family intent; backend
+// details remain in the plugins.
+bool is_htj2k_requested(const grk_cparameters *params) {
+    if (!params) {
+        return false;
+    }
+    return ((params->cblk_sty & (GRK_CBLKSTY_HT | GRK_CBLKSTY_HT_MIXED | GRK_CBLKSTY_HT_PHLD)) != 0) ||
+           ((params->rsiz & GRK_JPH_RSIZ_FLAG) != 0);
+}
+
+// Extract the image-like layout from b2nd metadata for plugin capability
+// checks.  Backends still deserialize the metadata themselves when they need
+// full geometry.
+bool read_b2nd_codec_layout(blosc2_cparams *cparams,
+                            uint32_t &precision_bits,
+                            uint32_t &num_components) {
+    precision_bits = 0;
+    num_components = 0;
+    if (cparams == nullptr || cparams->schunk == nullptr) {
+        return false;
+    }
+
+    const auto *schunk = (const blosc2_schunk*)cparams->schunk;
+    precision_bits = static_cast<uint32_t>(8 * schunk->typesize);
+
+    uint8_t *content = nullptr;
+    int32_t content_len = 0;
+    if (blosc2_meta_get((blosc2_schunk*)cparams->schunk, "b2nd",
+                        &content, &content_len) < 0) {
+        return false;
+    }
+
+    int8_t ndim = 0;
+    int64_t shape[BLOSC2_GROK_MAX_DIM];
+    int32_t chunkshape[BLOSC2_GROK_MAX_DIM];
+    int32_t blockshape[BLOSC2_GROK_MAX_DIM];
+    char *dtype = nullptr;
+    int8_t dtype_format = 0;
+    int rc = b2nd_deserialize_meta(content, content_len, &ndim,
+                                   shape, chunkshape, blockshape,
+                                   &dtype, &dtype_format);
+    free(content);
+    free(dtype);
+    if (rc < 0) {
+        return false;
+    }
+
+    uint32_t igdim = 0;
+    for (int i = 0; i < ndim; ++i) {
+        if (blockshape[i] == 1) {
+            igdim++;
+        } else {
+            break;
+        }
+    }
+    if ((ndim - igdim) == 3) {
+        num_components = static_cast<uint32_t>(blockshape[igdim + 2]);
+    } else {
+        num_components = 1;
+    }
+    return true;
+}
+
+// Build the generic request passed to replacement backends.  It records the
+// codec family intent and sample layout without exposing Grok internals as a
+// backend dependency.
+j2k_codec_request_t make_encode_request(uint8_t meta,
+                                        blosc2_cparams *cparams,
+                                        const void *chunk) {
+    ensure_grok_initialized(0, false);
+    j2k_codec_request_t request = {};
+    request.struct_size = sizeof(j2k_codec_request_t);
+    request.codec_kind = J2K_CODEC_KIND_J2K;
+    request.meta = meta;
+    request.cparams = cparams;
+    request.chunk = chunk;
+
+    uint32_t precision_bits = 0;
+    uint32_t num_components = 0;
+    if (read_b2nd_codec_layout(cparams, precision_bits, num_components)) {
+        request.precision_bits = precision_bits;
+        request.num_components = num_components;
+    } else if (cparams != nullptr && cparams->schunk != nullptr) {
+        const auto *schunk = (const blosc2_schunk*)cparams->schunk;
+        request.precision_bits = static_cast<uint32_t>(8 * schunk->typesize);
+    }
+
+    auto *codec_params = cparams ? (blosc2_grok_params *)cparams->codec_params : nullptr;
+    grk_cparameters *compress_params =
+        codec_params ? &codec_params->compressParams : &GRK_CPARAMETERS_DEFAULTS;
+    if (is_htj2k_requested(compress_params)) {
+        request.codec_kind = J2K_CODEC_KIND_HTJ2K;
+    }
+    if (meta != 0 || (compress_params && compress_params->irreversible)) {
+        request.flags |= J2K_CODEC_REQUEST_FLAG_LOSSY;
+    } else {
+        request.flags |= J2K_CODEC_REQUEST_FLAG_LOSSLESS;
+    }
+    return request;
+}
+
+// Decoder requests intentionally do not guess the codestream family.  A backend
+// that produced the bytes should decode them, and codestream inspection remains
+// backend-specific.
+j2k_codec_request_t make_decode_request(uint8_t meta,
+                                        blosc2_dparams *dparams,
+                                        const void *chunk) {
+    j2k_codec_request_t request = {};
+    request.struct_size = sizeof(j2k_codec_request_t);
+    request.codec_kind = J2K_CODEC_KIND_UNKNOWN;
+    request.meta = meta;
+    request.dparams = dparams;
+    request.chunk = chunk;
+    return request;
 }
 
 // Return whether a filesystem entry looks like a loadable backend library.
@@ -227,7 +345,8 @@ bool is_valid_plugin_descriptor(const j2k_codec_plugin_t *plugin,
         }
         return false;
     }
-    if (!plugin->name || !plugin->version || !plugin->vtable.encode || !plugin->vtable.decode) {
+    if (!plugin->name || !plugin->version || !plugin->vtable.supports ||
+        !plugin->vtable.encode || !plugin->vtable.decode) {
         if (debug) {
             fprintf(stderr, "[blosc2_grok] Incomplete plugin descriptor in %s\n", path.c_str());
         }
@@ -473,12 +592,28 @@ int blosc2_grok_encoder(
         fprintf(stderr, "[blosc2_grok] blosc2_grok_encoder called: meta=%d, input_len=%d\n", meta, input_len);
     }
 
+    j2k_codec_request_t request = make_encode_request(meta, cparams, chunk);
     j2k_codec_plugin_t* plugin = load_replacement_plugin();
     if (plugin) {
+        if (!plugin->vtable.supports(&request)) {
+            fprintf(stderr,
+                    "[blosc2_grok] Plugin %s does not support requested JPEG2000 mode "
+                    "(kind=%u precision=%u components=%u)\n",
+                    plugin->name, request.codec_kind, request.precision_bits, request.num_components);
+            return -1;
+        }
         if (debug) {
             fprintf(stderr, "[blosc2_grok] Using plugin: %s %s\n", plugin->name, plugin->version);
         }
-        return plugin->vtable.encode(input, input_len, output, output_len, meta, cparams, chunk);
+        return plugin->vtable.encode(input, input_len, output, output_len, meta, cparams, chunk, &request);
+    }
+
+    if (request.codec_kind == J2K_CODEC_KIND_HTJ2K && request.precision_bits > 8) {
+        fprintf(stderr,
+                "[blosc2_grok] Native Grok HTJ2K uint%u is not enabled; configure a backend "
+                "that supports HTJ2K, such as Kakadu or OpenHTJ2K\n",
+                request.precision_bits);
+        return -1;
     }
 
     return blosc2_grok_native_encoder(input, input_len, output, output_len, meta, cparams, chunk);
@@ -553,6 +688,16 @@ int blosc2_grok_native_encoder(
     } else {
         compressParams = &codec_params->compressParams;
         streamParams = &codec_params->streamParams;
+    }
+    if (is_htj2k_requested(compressParams) && precision > 8) {
+        fprintf(stderr,
+                "[blosc2_grok] Native Grok HTJ2K uint%u is not enabled; configure a backend "
+                "that supports HTJ2K, such as Kakadu or OpenHTJ2K\n",
+                precision);
+        if (codec_params == nullptr) {
+            free(streamParams);
+        }
+        return -1;
     }
     if (meta != 0) {
         // meta indicates we want rates quality mode with meta/10 cratio
@@ -670,10 +815,11 @@ int blosc2_grok_decoder(const uint8_t *input, int32_t input_len, uint8_t *output
 
     j2k_codec_plugin_t* plugin = load_replacement_plugin();
     if (plugin) {
+        j2k_codec_request_t request = make_decode_request(meta, dparams, chunk);
         if (debug) {
             fprintf(stderr, "[blosc2_grok] Using plugin decoder: %s %s\n", plugin->name, plugin->version);
         }
-        return plugin->vtable.decode(input, input_len, output, output_len, meta, dparams, chunk);
+        return plugin->vtable.decode(input, input_len, output, output_len, meta, dparams, chunk, &request);
     }
 
     return blosc2_grok_native_decoder(input, input_len, output, output_len, meta, dparams, chunk);

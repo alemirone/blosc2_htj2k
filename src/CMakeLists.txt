@@ -141,6 +141,81 @@ else()
     message(STATUS "Kakadu backend disabled (Kakadu headers/libraries not found)")
 endif()
 
+# Optional OpenHTJ2K backend.  It is built only when an OpenHTJ2K installation
+# with the public C++ encoder/decoder interface is available.
+set(OPENHTJ2K_ROOT "" CACHE PATH "OpenHTJ2K installation root")
+set(OPENHTJ2K_LIBRARY_DIR "" CACHE PATH "OpenHTJ2K library directory")
+set(OPENHTJ2K_INCLUDE_HINTS "")
+set(OPENHTJ2K_LIBRARY_HINTS "")
+
+if(NOT OPENHTJ2K_ROOT AND DEFINED ENV{OPENHTJ2K_ROOT})
+    set(OPENHTJ2K_ROOT "$ENV{OPENHTJ2K_ROOT}")
+endif()
+if(DEFINED ENV{OPENHTJ2K_INCLUDE_DIR})
+    list(APPEND OPENHTJ2K_INCLUDE_HINTS "$ENV{OPENHTJ2K_INCLUDE_DIR}")
+endif()
+if(NOT OPENHTJ2K_LIBRARY_DIR AND DEFINED ENV{OPENHTJ2K_LIBRARY_DIR})
+    set(OPENHTJ2K_LIBRARY_DIR "$ENV{OPENHTJ2K_LIBRARY_DIR}")
+elseif(NOT OPENHTJ2K_LIBRARY_DIR AND DEFINED ENV{OPENHTJ2K_LIB_PATH})
+    set(OPENHTJ2K_LIBRARY_DIR "$ENV{OPENHTJ2K_LIB_PATH}")
+endif()
+if(OPENHTJ2K_LIBRARY_DIR)
+    list(APPEND OPENHTJ2K_LIBRARY_HINTS "${OPENHTJ2K_LIBRARY_DIR}")
+endif()
+
+find_path(OPENHTJ2K_INCLUDE_DIR
+    NAMES encoder.hpp decoder.hpp
+    HINTS ${OPENHTJ2K_INCLUDE_HINTS} ${OPENHTJ2K_ROOT}
+    PATH_SUFFIXES include/open_htj2k/interface open_htj2k/interface interface include
+)
+find_library(OPENHTJ2K_LIBRARY
+    NAMES open_htj2k_R open_htj2k open_htj2k_d
+    HINTS ${OPENHTJ2K_LIBRARY_HINTS} ${OPENHTJ2K_ROOT}
+    PATH_SUFFIXES lib lib64
+)
+
+set(OPENHTJ2K_HAS_UINT16 OFF)
+find_file(OPENHTJ2K_PKGCONFIG_FILE
+    NAMES open_htj2k.pc
+    HINTS ${OPENHTJ2K_ROOT} ${OPENHTJ2K_LIBRARY_HINTS}
+    PATH_SUFFIXES lib/pkgconfig lib64/pkgconfig pkgconfig
+)
+if(OPENHTJ2K_PKGCONFIG_FILE)
+    file(STRINGS "${OPENHTJ2K_PKGCONFIG_FILE}" OPENHTJ2K_PC_VERSION_LINE REGEX "^Version:")
+    string(REGEX REPLACE "^Version:[ \t]*" "" OPENHTJ2K_VERSION "${OPENHTJ2K_PC_VERSION_LINE}")
+    if(OPENHTJ2K_VERSION VERSION_GREATER_EQUAL "0.4.0")
+        set(OPENHTJ2K_HAS_UINT16 ON)
+    endif()
+endif()
+
+if(OPENHTJ2K_INCLUDE_DIR AND OPENHTJ2K_LIBRARY AND OPENHTJ2K_HAS_UINT16)
+    add_library(blosc2_openhtj2k_backend SHARED plugin/openhtj2k_backend.cpp plugin/j2k_openhtj2k_plugin.cpp)
+    target_include_directories(blosc2_openhtj2k_backend PRIVATE ${OPENHTJ2K_INCLUDE_DIR} ${BLOSC2_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/plugin)
+    target_link_libraries(blosc2_openhtj2k_backend PRIVATE ${OPENHTJ2K_LIBRARY} ${BLOSC2_LIBRARIES})
+
+    if(UNIX AND NOT APPLE)
+        set_target_properties(blosc2_openhtj2k_backend PROPERTIES
+            INSTALL_RPATH "$ORIGIN/../../../blosc2/lib"
+        )
+    elseif(APPLE)
+        set_target_properties(blosc2_openhtj2k_backend PROPERTIES
+            INSTALL_RPATH "@loader_path/../../../blosc2/lib"
+        )
+    endif()
+
+    if (MSVC OR MINGW)
+        set_property(TARGET blosc2_openhtj2k_backend PROPERTY WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
+    endif()
+
+    install(TARGETS blosc2_openhtj2k_backend
+        RUNTIME DESTINATION blosc2_grok/plugins/openhtj2k
+        LIBRARY DESTINATION blosc2_grok/plugins/openhtj2k
+    )
+    message(STATUS "OpenHTJ2K backend enabled")
+else()
+    message(STATUS "OpenHTJ2K backend disabled (headers/libraries missing, or open_htj2k.pc version < 0.4.0)")
+endif()
+
 # Reference replacement backend.  It uses the native Grok path so the runtime
 # replacement mechanism is always testable, even when Kakadu is unavailable.
 add_library(blosc2_grok_backend SHARED plugin/j2k_grok_plugin.cpp)
