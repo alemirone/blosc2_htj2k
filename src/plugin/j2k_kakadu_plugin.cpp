@@ -12,6 +12,8 @@
 
 #include "j2k_codec_api.h"
 
+// The entry-point file is intentionally small: it binds the generic plugin ABI
+// to the Kakadu implementation without exposing Kakadu headers to blosc2_grok.
 extern "C" int blosc2_kakadu_supports(const j2k_codec_request_t *request);
 
 extern "C" int blosc2_kakadu_encoder(

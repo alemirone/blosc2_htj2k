@@ -38,6 +38,25 @@
 using namespace kdu_core;
 using namespace kdu_supp;
 
+// Function responsibility map:
+//
+// Kakadu process integration:
+// - KduErrorHandler/KduWarningHandler/ensure_kakadu_handlers(): route Kakadu diagnostics.
+// - ThreadEnvGuard: own optional Kakadu thread environment lifetime.
+// - MemTarget: collect Kakadu output bytes in memory for Blosc2 chunks.
+//
+// Runtime tuning:
+// - env_flag(), env_int(), get_kakadu_tune(): parse optional conservative tuning variables.
+// - kakadu_extra_has_param(), apply_kakadu_overrides(): apply explicit Kakadu parameter overrides.
+// - apply_kakadu_mode(), apply_kakadu_rate_defaults(): choose J2K/HTJ2K and lossless/lossy defaults.
+//
+// Blosc2 layout adaptation:
+// - load_b2nd_info(), set_siz_params(): map b2nd chunk metadata to Kakadu SIZ parameters.
+// - has_jp2_signature(): decide whether decode input is JP2 container or raw codestream.
+//
+// Plugin ABI:
+// - blosc2_kakadu_supports(): declare supported request kinds and sample layouts.
+// - blosc2_kakadu_encoder()/decoder(): encode/decode one Blosc2 chunk through Kakadu.
 namespace {
 class KduErrorHandler : public kdu_message {
   public:
@@ -84,6 +103,7 @@ class KduWarningHandler : public kdu_message {
     std::string buffer;
 };
 
+// Install Kakadu message handlers once per process.
 void ensure_kakadu_handlers(bool debug) {
     static bool configured = false;
     if (configured) {
@@ -96,6 +116,7 @@ void ensure_kakadu_handlers(bool debug) {
     kdu_customize_warnings(&warn_handler);
 }
 
+// Parse a boolean environment override with a conservative default.
 bool env_flag(const char *name, bool default_value) {
     const char *v = std::getenv(name);
     if (v == nullptr || *v == '\0') {
@@ -123,6 +144,7 @@ bool env_flag(const char *name, bool default_value) {
     return default_value;
 }
 
+// Parse a bounded integer environment override.
 int env_int(const char *name, int default_value) {
     const char *v = std::getenv(name);
     if (v == nullptr || *v == '\0') {
@@ -144,6 +166,7 @@ int env_int(const char *name, int default_value) {
 bool set_siz_params(siz_params &siz, int64_t width, int64_t height,
                     int32_t num_comps, int32_t precision);
 
+// Return whether user-provided Kakadu overrides already mention a parameter.
 bool kakadu_extra_has_param(const char *param) {
     const char *extra = std::getenv("BLOSC2_GROK_KAKADU_PARAMS");
     if (extra == nullptr || *extra == '\0' || param == nullptr || *param == '\0') {
@@ -160,6 +183,7 @@ bool kakadu_extra_has_param(const char *param) {
     return s.find(p) != std::string::npos;
 }
 
+// Set the codestream family: regular JPEG2000 or Part-15 HTJ2K.
 void apply_kakadu_mode(siz_params &siz, bool htj2k) {
     const bool debug = std::getenv("BLOSC2_GROK_DEBUG") != nullptr;
 
@@ -178,6 +202,7 @@ void apply_kakadu_mode(siz_params &siz, bool htj2k) {
     }
 }
 
+// Apply optional caller-provided Kakadu parameter strings and Clevels tuning.
 void apply_kakadu_overrides(siz_params &siz) {
     const bool debug = std::getenv("BLOSC2_GROK_DEBUG") != nullptr;
     // Optional: apply extra Kakadu parameter strings (semicolon/newline separated).
@@ -236,6 +261,8 @@ void apply_kakadu_overrides(siz_params &siz) {
     }
 }
 
+// Choose conservative defaults for lossless/lossy operation unless explicitly
+// overridden by BLOSC2_GROK_KAKADU_PARAMS.
 void apply_kakadu_rate_defaults(siz_params &siz, int32_t precision, bool rate_controlled) {
     const bool debug = std::getenv("BLOSC2_GROK_DEBUG") != nullptr;
     if (!rate_controlled) {
@@ -269,6 +296,7 @@ void apply_kakadu_rate_defaults(siz_params &siz, int32_t precision, bool rate_co
     }
 }
 
+// Identify JP2 containers; otherwise Kakadu decodes the chunk as raw codestream.
 bool has_jp2_signature(const uint8_t *data, int32_t len) {
     if (data == nullptr || len < 12) {
         return false;
@@ -285,6 +313,7 @@ struct KakaduTune {
     int threads = 0;             // 0/1 => single-thread; >1 => use Kakadu thread env.
 };
 
+// Read optional Kakadu speed/precision/thread tuning from the environment.
 KakaduTune get_kakadu_tune() {
     KakaduTune t;
     t.force_precise = env_flag("BLOSC2_GROK_KAKADU_PRECISE", true);
@@ -293,6 +322,7 @@ KakaduTune get_kakadu_tune() {
     return t;
 }
 
+// RAII wrapper for Kakadu's optional multi-thread environment.
 class ThreadEnvGuard {
   public:
     ThreadEnvGuard() = default;
@@ -323,6 +353,7 @@ class ThreadEnvGuard {
     kdu_thread_env env;
 };
 
+// In-memory Kakadu target used because Blosc2 expects encoded bytes in a caller buffer.
 class MemTarget : public kdu_compressed_target_nonnative {
   public:
     std::vector<kdu_byte> data;
@@ -336,6 +367,7 @@ class MemTarget : public kdu_compressed_target_nonnative {
     }
 };
 
+// Read transparent Blosc2 b2nd layout and map (..., Y, X[, C]) to Kakadu X/Y.
 bool load_b2nd_info(blosc2_cparams *cparams,
                     int64_t &dim_x, int64_t &dim_y,
                     int32_t &num_comps, int32_t &typesize) {
@@ -387,6 +419,7 @@ bool load_b2nd_info(blosc2_cparams *cparams,
     return true;
 }
 
+// Populate Kakadu SIZ parameters for one full-image tile.
 bool set_siz_params(siz_params &siz, int64_t width, int64_t height,
                     int32_t num_comps, int32_t precision) {
     if (width <= 0 || height <= 0) {
@@ -416,6 +449,7 @@ bool set_siz_params(siz_params &siz, int64_t width, int64_t height,
 
 }  // namespace
 
+// Report whether Kakadu can satisfy the current JPEG2000-family request.
 extern "C" int blosc2_kakadu_supports(const j2k_codec_request_t *request) {
     if (request == nullptr) {
         return 0;
@@ -436,6 +470,7 @@ extern "C" int blosc2_kakadu_supports(const j2k_codec_request_t *request) {
     return 1;
 }
 
+// Encode one Blosc2 chunk using Kakadu, selecting J2K or HTJ2K from the request.
 extern "C" int blosc2_kakadu_encoder(
     const uint8_t *input,
     int32_t input_len,
@@ -478,19 +513,6 @@ extern "C" int blosc2_kakadu_encoder(
     if (!has_b2nd) {
         if (debug) {
             fprintf(stderr, "[blosc2_grok] Kakadu encoder error: no b2nd metadata found\n");
-        }
-        return -1;
-    }
-
-    // If still no b2nd meta and no codec_params, try to get info from schunk
-    if (!has_b2nd) {
-        if (cparams && cparams->schunk) {
-            typesize = ((blosc2_schunk*)cparams->schunk)->typesize;
-            // For now, we can't determine dim_x, dim_y without b2nd or codec_params
-            if (debug) {
-                fprintf(stderr, "[blosc2_grok] Kakadu encoder: no b2nd meta or codec_params found, cannot determine image dimensions\n");
-            }
-            return -1;
         }
         return -1;
     }
@@ -648,6 +670,7 @@ extern "C" int blosc2_kakadu_encoder(
     return static_cast<int>(target.data.size());
 }
 
+// Decode one Kakadu-supported JP2 or raw codestream into a Blosc2 chunk buffer.
 extern "C" int blosc2_kakadu_decoder(
     const uint8_t *input,
     int32_t input_len,

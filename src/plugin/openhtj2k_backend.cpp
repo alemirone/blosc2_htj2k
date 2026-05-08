@@ -30,10 +30,25 @@
 #define BLOSC2_GROK_MAX_DIM B2ND_MAX_DIM
 #endif
 
+// Function responsibility map:
+//
+// Capability boundary:
+// - blosc2_openhtj2k_supports(): declare exactly which requests this backend can handle.
+//
+// Blosc2 layout adaptation:
+// - load_b2nd_info(): read dimensions, component count and sample size from b2nd metadata.
+// - fill_planar_input(): convert Blosc2 interleaved chunk bytes to OpenHTJ2K planar buffers.
+//
+// OpenHTJ2K codec policy:
+// - choose_dwt_levels(): choose a conservative decomposition count for small chunk images.
+// - blosc2_openhtj2k_encoder(): encode HTJ2K uint8/uint16 gray/RGB chunks.
+// - blosc2_openhtj2k_decoder(): decode codestreams back to Blosc2 interleaved bytes.
 namespace {
 
 constexpr uint8_t OPENHTJ2K_NO_QFACTOR = 0xFF;
 
+// Read transparent Blosc2 b2nd layout and map (..., Y, X[, C]) to codec
+// coordinates X/Y plus component count.
 bool load_b2nd_info(blosc2_cparams *cparams,
                     int64_t &dim_x, int64_t &dim_y,
                     int32_t &num_comps, int32_t &typesize) {
@@ -83,6 +98,8 @@ bool load_b2nd_info(blosc2_cparams *cparams,
     return true;
 }
 
+// Pick a bounded wavelet decomposition count; small chunks cannot support many
+// levels, and five levels is enough for this backend's test/optional role.
 uint8_t choose_dwt_levels(int64_t width, int64_t height) {
     uint8_t levels = 0;
     int64_t n = width < height ? width : height;
@@ -93,6 +110,8 @@ uint8_t choose_dwt_levels(int64_t width, int64_t height) {
     return levels;
 }
 
+// Convert Blosc2's interleaved uint8/uint16 memory layout to the planar int32
+// buffers expected by OpenHTJ2K.
 bool fill_planar_input(const uint8_t *input,
                        int64_t width,
                        int64_t height,
@@ -131,6 +150,7 @@ bool fill_planar_input(const uint8_t *input,
 
 }  // namespace
 
+// Report whether the backend can satisfy the current JPEG2000-family request.
 extern "C" int blosc2_openhtj2k_supports(const j2k_codec_request_t *request) {
     if (request == nullptr) {
         return 0;
@@ -150,6 +170,7 @@ extern "C" int blosc2_openhtj2k_supports(const j2k_codec_request_t *request) {
     return 1;
 }
 
+// Encode one Blosc2 chunk as an HTJ2K codestream using OpenHTJ2K directly.
 extern "C" int blosc2_openhtj2k_encoder(
     const uint8_t *input,
     int32_t input_len,
@@ -251,6 +272,7 @@ extern "C" int blosc2_openhtj2k_encoder(
     }
 }
 
+// Decode one OpenHTJ2K codestream into the Blosc2 interleaved output buffer.
 extern "C" int blosc2_openhtj2k_decoder(
     const uint8_t *input,
     int32_t input_len,

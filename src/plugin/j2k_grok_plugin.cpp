@@ -9,13 +9,13 @@
  * License: GNU Affero General Public License v3.0
  **********************************************************************/
 
-#include <cstdlib>
-#include <cstring>
-
 #include "j2k_codec_api.h"
 #include "blosc2_grok.h"
 #include "blosc2_grok_public.h"
 
+// Reference backend capability check.  It mirrors the native Grok path and
+// deliberately refuses HTJ2K uint16, which must be handled by a backend with
+// reliable HTJ2K support.
 static int grok_plugin_supports(const j2k_codec_request_t *request) {
     if (request == nullptr) {
         return 0;
@@ -26,6 +26,8 @@ static int grok_plugin_supports(const j2k_codec_request_t *request) {
     return 1;
 }
 
+// Reference backend encoder: call the native Grok implementation through the
+// same ABI used by external replacement backends.
 static int grok_plugin_encode(
     const uint8_t *input,
     int32_t input_len,
@@ -39,6 +41,8 @@ static int grok_plugin_encode(
     return blosc2_grok_native_encoder(input, input_len, output, output_len, meta, cparams, chunk);
 }
 
+// Reference backend decoder: keep the replacement path testable without any
+// optional codec library.
 static int grok_plugin_decode(
     const uint8_t *input,
     int32_t input_len,

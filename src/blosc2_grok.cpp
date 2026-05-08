@@ -79,6 +79,11 @@ static plugin_library_handle_t s_plugin_handle = nullptr;
 // - blosc2_grok_native_encoder(), blosc2_grok_native_decoder(): fallback implementation and target for the reference Grok backend.
 // - blosc2_grok_destroy(): release the loaded backend handle and deinitialize Grok.
 //
+// JPEG2000-family request shaping:
+// - is_htj2k_requested(): detect HTJ2K intent from Grok-compatible parameters.
+// - read_b2nd_codec_layout(): extract precision/component metadata for capability checks.
+// - make_encode_request(), make_decode_request(): build the backend-agnostic request struct.
+//
 // Native Grok runtime support used by the fallback/reference backend:
 // - grok_init_mutex(), ensure_grok_initialized(): guard Grok process-global initialization.
 // - blosc2_grok_init(), blosc2_grok_set_default_params(): public runtime setup.
