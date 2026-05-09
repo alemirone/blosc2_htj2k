@@ -14,9 +14,9 @@
 
 // The entry-point file is intentionally small: it binds the generic plugin ABI
 // to the Kakadu implementation without exposing Kakadu headers to blosc2_grok.
-extern "C" int blosc2_kakadu_supports(const j2k_codec_request_t *request);
+extern "C" int blosc2_kakadu_j2k_supports(const j2k_codec_request_t *request);
 
-extern "C" int blosc2_kakadu_encoder(
+extern "C" int blosc2_kakadu_j2k_encoder(
     const uint8_t *input,
     int32_t input_len,
     uint8_t *output,
@@ -27,7 +27,7 @@ extern "C" int blosc2_kakadu_encoder(
     const j2k_codec_request_t *request
 );
 
-extern "C" int blosc2_kakadu_decoder(
+extern "C" int blosc2_kakadu_j2k_decoder(
     const uint8_t *input,
     int32_t input_len,
     uint8_t *output,
@@ -42,12 +42,12 @@ extern "C" {
 J2K_CODEC_PLUGIN_EXPORT j2k_codec_plugin_t J2K_CODEC_PLUGIN = {
     J2K_CODEC_PLUGIN_ABI_VERSION,
     sizeof(j2k_codec_plugin_t),
-    "Kakadu-J2K",
+    "Kakadu",
     "v8.5",
     {
-        blosc2_kakadu_supports,
-        blosc2_kakadu_encoder,
-        blosc2_kakadu_decoder
+        blosc2_kakadu_j2k_supports,
+        blosc2_kakadu_j2k_encoder,
+        blosc2_kakadu_j2k_decoder
     },
 };
 }

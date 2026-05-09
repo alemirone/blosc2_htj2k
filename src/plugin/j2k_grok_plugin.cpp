@@ -13,14 +13,18 @@
 #include "blosc2_grok.h"
 #include "blosc2_grok_public.h"
 
-// Reference backend capability check.  It mirrors the native Grok path and
-// deliberately refuses HTJ2K uint16, which must be handled by a backend with
-// reliable HTJ2K support.
+// Reference backend capability check.  It mirrors the native Grok J2K path and
+// refuses sample layouts outside the conservative image cases used by this
+// transparent chunk codec.
 static int grok_plugin_supports(const j2k_codec_request_t *request) {
     if (request == nullptr) {
         return 0;
     }
-    if (request->codec_kind == J2K_CODEC_KIND_HTJ2K && request->precision_bits > 8) {
+    if (request->precision_bits != 0 && request->precision_bits > 16) {
+        return 0;
+    }
+    if (request->num_components != 0 &&
+        !(request->num_components == 1 || request->num_components == 3)) {
         return 0;
     }
     return 1;

@@ -114,27 +114,36 @@ find_library(KAKADU_AUX_LIBRARY
 )
 
 if(KAKADU_INCLUDE_DIR AND KAKADU_CORE_LIBRARY AND KAKADU_AUX_LIBRARY)
-    add_library(blosc2_kakadu_backend SHARED plugin/kakadu_backend.cpp plugin/j2k_kakadu_plugin.cpp)
-    target_include_directories(blosc2_kakadu_backend PRIVATE ${KAKADU_INCLUDE_DIR} ${BLOSC2_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/plugin)
-    target_link_libraries(blosc2_kakadu_backend PRIVATE ${KAKADU_CORE_LIBRARY} ${KAKADU_AUX_LIBRARY} ${BLOSC2_LIBRARIES})
+    add_library(blosc2_kakadu_j2k_backend SHARED plugin/kakadu_backend.cpp plugin/j2k_kakadu_plugin.cpp)
+    target_include_directories(blosc2_kakadu_j2k_backend PRIVATE ${KAKADU_INCLUDE_DIR} ${BLOSC2_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/plugin)
+    target_link_libraries(blosc2_kakadu_j2k_backend PRIVATE ${KAKADU_CORE_LIBRARY} ${KAKADU_AUX_LIBRARY} ${BLOSC2_LIBRARIES})
+
+    add_library(blosc2_kakadu_htj2k_backend SHARED plugin/kakadu_backend.cpp plugin/htj2k_kakadu_plugin.cpp)
+    target_include_directories(blosc2_kakadu_htj2k_backend PRIVATE ${KAKADU_INCLUDE_DIR} ${BLOSC2_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/plugin)
+    target_link_libraries(blosc2_kakadu_htj2k_backend PRIVATE ${KAKADU_CORE_LIBRARY} ${KAKADU_AUX_LIBRARY} ${BLOSC2_LIBRARIES})
 
     if(UNIX AND NOT APPLE)
-        set_target_properties(blosc2_kakadu_backend PROPERTIES
-            INSTALL_RPATH "$ORIGIN/../../../blosc2/lib"
+        set_target_properties(blosc2_kakadu_j2k_backend blosc2_kakadu_htj2k_backend PROPERTIES
+            INSTALL_RPATH "$ORIGIN/../../../../blosc2/lib"
         )
     elseif(APPLE)
-        set_target_properties(blosc2_kakadu_backend PROPERTIES
-            INSTALL_RPATH "@loader_path/../../../blosc2/lib"
+        set_target_properties(blosc2_kakadu_j2k_backend blosc2_kakadu_htj2k_backend PROPERTIES
+            INSTALL_RPATH "@loader_path/../../../../blosc2/lib"
         )
     endif()
 
     if (MSVC OR MINGW)
-        set_property(TARGET blosc2_kakadu_backend PROPERTY WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
+        set_property(TARGET blosc2_kakadu_j2k_backend PROPERTY WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
+        set_property(TARGET blosc2_kakadu_htj2k_backend PROPERTY WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
     endif()
 
-    install(TARGETS blosc2_kakadu_backend
-        RUNTIME DESTINATION blosc2_grok/plugins/kakadu
-        LIBRARY DESTINATION blosc2_grok/plugins/kakadu
+    install(TARGETS blosc2_kakadu_j2k_backend
+        RUNTIME DESTINATION blosc2_grok/plugins/j2k/kakadu
+        LIBRARY DESTINATION blosc2_grok/plugins/j2k/kakadu
+    )
+    install(TARGETS blosc2_kakadu_htj2k_backend
+        RUNTIME DESTINATION blosc2_grok/plugins/htj2k/kakadu
+        LIBRARY DESTINATION blosc2_grok/plugins/htj2k/kakadu
     )
     message(STATUS "Kakadu backend enabled")
 else()
@@ -174,32 +183,49 @@ find_library(OPENHTJ2K_LIBRARY
     PATH_SUFFIXES lib lib64
 )
 
-set(OPENHTJ2K_HAS_UINT16 OFF)
-find_file(OPENHTJ2K_PKGCONFIG_FILE
-    NAMES open_htj2k.pc
-    HINTS ${OPENHTJ2K_ROOT} ${OPENHTJ2K_LIBRARY_HINTS}
-    PATH_SUFFIXES lib/pkgconfig lib64/pkgconfig pkgconfig
-)
-if(OPENHTJ2K_PKGCONFIG_FILE)
-    file(STRINGS "${OPENHTJ2K_PKGCONFIG_FILE}" OPENHTJ2K_PC_VERSION_LINE REGEX "^Version:")
-    string(REGEX REPLACE "^Version:[ \t]*" "" OPENHTJ2K_VERSION "${OPENHTJ2K_PC_VERSION_LINE}")
-    if(OPENHTJ2K_VERSION VERSION_GREATER_EQUAL "0.4.0")
-        set(OPENHTJ2K_HAS_UINT16 ON)
-    endif()
+unset(OPENHTJ2K_HAS_PR190_UINT16_API)
+unset(OPENHTJ2K_HAS_PR190_UINT16_API CACHE)
+if(OPENHTJ2K_INCLUDE_DIR AND OPENHTJ2K_LIBRARY)
+    include(CheckCXXSourceCompiles)
+    set(CMAKE_REQUIRED_INCLUDES_SAVE "${CMAKE_REQUIRED_INCLUDES}")
+    set(CMAKE_REQUIRED_LIBRARIES_SAVE "${CMAKE_REQUIRED_LIBRARIES}")
+    set(CMAKE_REQUIRED_INCLUDES "${OPENHTJ2K_INCLUDE_DIR}")
+    set(CMAKE_REQUIRED_LIBRARIES "${OPENHTJ2K_LIBRARY}")
+    check_cxx_source_compiles("
+        #include <cstdint>
+        #include <vector>
+        #include \"encoder.hpp\"
+        #include \"decoder.hpp\"
+        int main() {
+            std::vector<int32_t*> planes;
+            open_htj2k::siz_params siz{};
+            siz.Ssiz.push_back(15);
+            open_htj2k::cod_params cod{};
+            cod.number_of_layers = 1;
+            open_htj2k::qcd_params qcd{};
+            qcd.base_step = 1.0 / 65536.0;
+            open_htj2k::openhtj2k_encoder encoder(\"\", planes, siz, cod, qcd, 255, false, 0, 0);
+            const uint8_t bytes[2] = {0xff, 0x4f};
+            open_htj2k::openhtj2k_decoder decoder(bytes, sizeof(bytes), 0, 0);
+            return 0;
+        }
+    " OPENHTJ2K_HAS_PR190_UINT16_API)
+    set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES_SAVE}")
+    set(CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES_SAVE}")
 endif()
 
-if(OPENHTJ2K_INCLUDE_DIR AND OPENHTJ2K_LIBRARY AND OPENHTJ2K_HAS_UINT16)
-    add_library(blosc2_openhtj2k_backend SHARED plugin/openhtj2k_backend.cpp plugin/j2k_openhtj2k_plugin.cpp)
+if(OPENHTJ2K_INCLUDE_DIR AND OPENHTJ2K_LIBRARY AND OPENHTJ2K_HAS_PR190_UINT16_API)
+    add_library(blosc2_openhtj2k_backend SHARED plugin/openhtj2k_backend.cpp plugin/htj2k_openhtj2k_plugin.cpp)
     target_include_directories(blosc2_openhtj2k_backend PRIVATE ${OPENHTJ2K_INCLUDE_DIR} ${BLOSC2_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/plugin)
     target_link_libraries(blosc2_openhtj2k_backend PRIVATE ${OPENHTJ2K_LIBRARY} ${BLOSC2_LIBRARIES})
 
     if(UNIX AND NOT APPLE)
         set_target_properties(blosc2_openhtj2k_backend PROPERTIES
-            INSTALL_RPATH "$ORIGIN/../../../blosc2/lib"
+            INSTALL_RPATH "$ORIGIN/../../../../blosc2/lib"
         )
     elseif(APPLE)
         set_target_properties(blosc2_openhtj2k_backend PROPERTIES
-            INSTALL_RPATH "@loader_path/../../../blosc2/lib"
+            INSTALL_RPATH "@loader_path/../../../../blosc2/lib"
         )
     endif()
 
@@ -208,12 +234,12 @@ if(OPENHTJ2K_INCLUDE_DIR AND OPENHTJ2K_LIBRARY AND OPENHTJ2K_HAS_UINT16)
     endif()
 
     install(TARGETS blosc2_openhtj2k_backend
-        RUNTIME DESTINATION blosc2_grok/plugins/openhtj2k
-        LIBRARY DESTINATION blosc2_grok/plugins/openhtj2k
+        RUNTIME DESTINATION blosc2_grok/plugins/htj2k/openhtj2k
+        LIBRARY DESTINATION blosc2_grok/plugins/htj2k/openhtj2k
     )
     message(STATUS "OpenHTJ2K backend enabled")
 else()
-    message(STATUS "OpenHTJ2K backend disabled (headers/libraries missing, or open_htj2k.pc version < 0.4.0)")
+    message(STATUS "OpenHTJ2K backend disabled (headers/libraries missing, or PR190 uint16 API probe failed)")
 endif()
 
 # Reference replacement backend.  It uses the native Grok path so the runtime
@@ -226,16 +252,16 @@ if (MSVC OR MINGW)
 endif()
 if(UNIX AND NOT APPLE)
     set_target_properties(blosc2_grok_backend PROPERTIES
-        INSTALL_RPATH "$ORIGIN/../..;$ORIGIN/../../../blosc2/lib"
+        INSTALL_RPATH "$ORIGIN/../../..;$ORIGIN/../../../../blosc2/lib"
     )
 elseif(APPLE)
     set_target_properties(blosc2_grok_backend PROPERTIES
-        INSTALL_RPATH "@loader_path/../..;@loader_path/../../../blosc2/lib"
+        INSTALL_RPATH "@loader_path/../../..;@loader_path/../../../../blosc2/lib"
     )
 endif()
 install(TARGETS blosc2_grok_backend
-    RUNTIME DESTINATION blosc2_grok/plugins/grok
-    LIBRARY DESTINATION blosc2_grok/plugins/grok
+    RUNTIME DESTINATION blosc2_grok/plugins/j2k/grok
+    LIBRARY DESTINATION blosc2_grok/plugins/j2k/grok
 )
 
 # Test program

@@ -19,7 +19,7 @@
 
 #include "blosc2.h"
 #include "b2nd.h"
-#include "j2k_codec_api.h"
+#include "htj2k_codec_api.h"
 
 #include "encoder.hpp"
 #include "decoder.hpp"
@@ -33,7 +33,7 @@
 // Function responsibility map:
 //
 // Capability boundary:
-// - blosc2_openhtj2k_supports(): declare exactly which requests this backend can handle.
+// - blosc2_openhtj2k_supports(): declare exactly which HTJ2K requests this backend can handle.
 //
 // Blosc2 layout adaptation:
 // - load_b2nd_info(): read dimensions, component count and sample size from b2nd metadata.
@@ -150,13 +150,9 @@ bool fill_planar_input(const uint8_t *input,
 
 }  // namespace
 
-// Report whether the backend can satisfy the current JPEG2000-family request.
-extern "C" int blosc2_openhtj2k_supports(const j2k_codec_request_t *request) {
+// Report whether the backend can satisfy the current HTJ2K request.
+extern "C" int blosc2_openhtj2k_supports(const htj2k_codec_request_t *request) {
     if (request == nullptr) {
-        return 0;
-    }
-    if (!(request->codec_kind == J2K_CODEC_KIND_HTJ2K ||
-          request->codec_kind == J2K_CODEC_KIND_UNKNOWN)) {
         return 0;
     }
     if (request->precision_bits != 0 &&
@@ -179,13 +175,12 @@ extern "C" int blosc2_openhtj2k_encoder(
     uint8_t meta,
     blosc2_cparams* cparams,
     const void* /*chunk*/,
-    const j2k_codec_request_t *request
+    const htj2k_codec_request_t *request
 ) {
     const bool debug = std::getenv("BLOSC2_GROK_DEBUG") != nullptr;
-    if (!blosc2_openhtj2k_supports(request) ||
-        request->codec_kind != J2K_CODEC_KIND_HTJ2K) {
+    if (!blosc2_openhtj2k_supports(request)) {
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] OpenHTJ2K encode supports only HTJ2K requests\n");
+            fprintf(stderr, "[blosc2_grok] OpenHTJ2K encode does not support this HTJ2K request\n");
         }
         return -1;
     }
@@ -229,7 +224,7 @@ extern "C" int blosc2_openhtj2k_encoder(
         siz.YRsiz.push_back(1);
     }
 
-    const bool lossless = (request->flags & J2K_CODEC_REQUEST_FLAG_LOSSLESS) != 0 && meta == 0;
+    const bool lossless = (request->flags & HTJ2K_CODEC_REQUEST_FLAG_LOSSLESS) != 0 && meta == 0;
     open_htj2k::cod_params cod{};
     cod.blkwidth = 4;       // OpenHTJ2K stores log2(block_size) - 2; 4 means 64.
     cod.blkheight = 4;
@@ -246,8 +241,14 @@ extern "C" int blosc2_openhtj2k_encoder(
     open_htj2k::qcd_params qcd{};
     qcd.number_of_guardbits = 1;
     qcd.is_derived = false;
+    // blosc2_grok uses codec_meta / 10.0 as a target compression ratio.  The
+    // OpenHTJ2K library API exposes quantization controls rather than a byte
+    // budget, so this keeps the same monotonic meaning with a conservative
+    // quantization step.
+    const double target_ratio = meta == 0 ? 1.0 : static_cast<double>(meta) / 10.0;
     qcd.base_step = lossless ? std::ldexp(1.0, -precision)
-                             : std::ldexp(1.0, -(precision + 5));
+                             : std::ldexp(1.0, -(precision > 4 ? precision - 4 : precision)) *
+                                   target_ratio;
 
     std::vector<uint8_t> encoded;
     try {
@@ -281,7 +282,7 @@ extern "C" int blosc2_openhtj2k_decoder(
     uint8_t /*meta*/,
     blosc2_dparams * /*dparams*/,
     const void * /*chunk*/,
-    const j2k_codec_request_t * /*request*/
+    const htj2k_codec_request_t * /*request*/
 ) {
     const bool debug = std::getenv("BLOSC2_GROK_DEBUG") != nullptr;
     try {

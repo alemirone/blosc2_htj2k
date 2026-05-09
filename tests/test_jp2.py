@@ -84,6 +84,8 @@ def test_jp2(image, kwargs, leading_dims):
 
     if kwargs.get('mct', 0) == 1 and np_array.ndim != 3:
         pytest.skip("YCC conversion is only meant to be used for RGB")
+    if kwargs.get('mode', None) == blosc2_grok.GrkMode.HT:
+        pytest.xfail("Native HTJ2K requires BLOSC2_GROK_HTJ2K_REPLACEMENT_DIR")
 
     # Set the parameters that will be used by the codec
     blosc2_grok.set_params_defaults(**kwargs)

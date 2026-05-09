@@ -17,6 +17,7 @@
 
 #include "blosc2.h"
 #include "b2nd.h"
+#include "htj2k_codec_api.h"
 #include "j2k_codec_api.h"
 
 #include "kdu_compressed.h"
@@ -55,8 +56,9 @@ using namespace kdu_supp;
 // - has_jp2_signature(): decide whether decode input is JP2 container or raw codestream.
 //
 // Plugin ABI:
-// - blosc2_kakadu_supports(): declare supported request kinds and sample layouts.
-// - blosc2_kakadu_encoder()/decoder(): encode/decode one Blosc2 chunk through Kakadu.
+// - blosc2_kakadu_j2k_*(): J2K plugin entry points.
+// - blosc2_kakadu_htj2k_*(): HTJ2K plugin entry points.
+// - kakadu_encode()/kakadu_decode(): shared implementation used by both physical plugins.
 namespace {
 class KduErrorHandler : public kdu_message {
   public:
@@ -449,29 +451,20 @@ bool set_siz_params(siz_params &siz, int64_t width, int64_t height,
 
 }  // namespace
 
-// Report whether Kakadu can satisfy the current JPEG2000-family request.
-extern "C" int blosc2_kakadu_supports(const j2k_codec_request_t *request) {
-    if (request == nullptr) {
+// Shared Kakadu capability check for the transparent J2K/HTJ2K chunk layout.
+static int kakadu_supports_layout(uint32_t precision_bits, uint32_t num_components) {
+    if (precision_bits != 0 && !(precision_bits == 8 || precision_bits == 16)) {
         return 0;
     }
-    if (!(request->codec_kind == J2K_CODEC_KIND_J2K ||
-          request->codec_kind == J2K_CODEC_KIND_HTJ2K ||
-          request->codec_kind == J2K_CODEC_KIND_UNKNOWN)) {
-        return 0;
-    }
-    if (request->precision_bits != 0 &&
-        !(request->precision_bits == 8 || request->precision_bits == 16)) {
-        return 0;
-    }
-    if (request->num_components != 0 &&
-        !(request->num_components == 1 || request->num_components == 3)) {
+    if (num_components != 0 && !(num_components == 1 || num_components == 3)) {
         return 0;
     }
     return 1;
 }
 
-// Encode one Blosc2 chunk using Kakadu, selecting J2K or HTJ2K from the request.
-extern "C" int blosc2_kakadu_encoder(
+// Encode one Blosc2 chunk using Kakadu.  The small physical plugin entry point
+// chooses whether this shared implementation emits regular J2K or HTJ2K.
+int kakadu_encode(
     const uint8_t *input,
     int32_t input_len,
     uint8_t *output,
@@ -479,7 +472,7 @@ extern "C" int blosc2_kakadu_encoder(
     uint8_t meta,
     blosc2_cparams* cparams,
     const void* /*chunk*/,
-    const j2k_codec_request_t *request
+    bool htj2k
 ) {
     const bool debug = std::getenv("BLOSC2_GROK_DEBUG") != nullptr;
     ensure_kakadu_handlers(debug);
@@ -488,7 +481,6 @@ extern "C" int blosc2_kakadu_encoder(
         fprintf(stderr, "[blosc2_grok] Kakadu tune: force_precise=%d want_fastest=%d threads=%d\n",
                 tune.force_precise ? 1 : 0, tune.want_fastest ? 1 : 0, tune.threads);
     }
-    const bool htj2k = request && request->codec_kind == J2K_CODEC_KIND_HTJ2K;
     // J2K keeps the existing JP2 container path.  HTJ2K is emitted as a raw
     // Part-15 codestream because this transparent chunk format does not need a
     // JPH file wrapper.
@@ -671,15 +663,14 @@ extern "C" int blosc2_kakadu_encoder(
 }
 
 // Decode one Kakadu-supported JP2 or raw codestream into a Blosc2 chunk buffer.
-extern "C" int blosc2_kakadu_decoder(
+int kakadu_decode(
     const uint8_t *input,
     int32_t input_len,
     uint8_t *output,
     int32_t output_len,
     uint8_t /*meta*/,
     blosc2_dparams * /*dparams*/,
-    const void * /*chunk*/,
-    const j2k_codec_request_t * /*request*/
+    const void * /*chunk*/
 ) {
     const bool debug = std::getenv("BLOSC2_GROK_DEBUG") != nullptr;
     ensure_kakadu_handlers(debug);
@@ -808,4 +799,76 @@ extern "C" int blosc2_kakadu_decoder(
     }
 
     return output_len;
+}
+
+// J2K plugin capability entry point.
+extern "C" int blosc2_kakadu_j2k_supports(const j2k_codec_request_t *request) {
+    if (request == nullptr) {
+        return 0;
+    }
+    return kakadu_supports_layout(request->precision_bits, request->num_components);
+}
+
+// J2K plugin encoder entry point.
+extern "C" int blosc2_kakadu_j2k_encoder(
+    const uint8_t *input,
+    int32_t input_len,
+    uint8_t *output,
+    int32_t output_len,
+    uint8_t meta,
+    blosc2_cparams* cparams,
+    const void* chunk,
+    const j2k_codec_request_t * /*request*/
+) {
+    return kakadu_encode(input, input_len, output, output_len, meta, cparams, chunk, false);
+}
+
+// J2K plugin decoder entry point.
+extern "C" int blosc2_kakadu_j2k_decoder(
+    const uint8_t *input,
+    int32_t input_len,
+    uint8_t *output,
+    int32_t output_len,
+    uint8_t meta,
+    blosc2_dparams *dparams,
+    const void *chunk,
+    const j2k_codec_request_t * /*request*/
+) {
+    return kakadu_decode(input, input_len, output, output_len, meta, dparams, chunk);
+}
+
+// HTJ2K plugin capability entry point.
+extern "C" int blosc2_kakadu_htj2k_supports(const htj2k_codec_request_t *request) {
+    if (request == nullptr) {
+        return 0;
+    }
+    return kakadu_supports_layout(request->precision_bits, request->num_components);
+}
+
+// HTJ2K plugin encoder entry point.
+extern "C" int blosc2_kakadu_htj2k_encoder(
+    const uint8_t *input,
+    int32_t input_len,
+    uint8_t *output,
+    int32_t output_len,
+    uint8_t meta,
+    blosc2_cparams* cparams,
+    const void* chunk,
+    const htj2k_codec_request_t * /*request*/
+) {
+    return kakadu_encode(input, input_len, output, output_len, meta, cparams, chunk, true);
+}
+
+// HTJ2K plugin decoder entry point.
+extern "C" int blosc2_kakadu_htj2k_decoder(
+    const uint8_t *input,
+    int32_t input_len,
+    uint8_t *output,
+    int32_t output_len,
+    uint8_t meta,
+    blosc2_dparams *dparams,
+    const void *chunk,
+    const htj2k_codec_request_t * /*request*/
+) {
+    return kakadu_decode(input, input_len, output, output_len, meta, dparams, chunk);
 }
