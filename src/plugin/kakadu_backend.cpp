@@ -682,7 +682,7 @@ int kakadu_decode(
     const bool is_jp2 = has_jp2_signature(input, input_len);
     if (debug) {
         fprintf(stderr, "[blosc2_grok] Kakadu decoder path selected (%s)\n",
-                is_jp2 ? "JP2 container" : "J2K raw codestream");
+                is_jp2 ? "JP2 container" : "raw codestream");
     }
     kdu_compressed_source_buffered source;
     source.open(const_cast<kdu_byte*>(reinterpret_cast<const kdu_byte*>(input)),
@@ -758,36 +758,39 @@ int kakadu_decode(
         kdu_stripe_decompressor decompressor;
         ThreadEnvGuard thread_env;
         thread_env.setup(tune.threads);
+        if (debug) {
+            fprintf(stderr, "[blosc2_grok] Kakadu decoder: starting stripe decompressor\n");
+        }
         decompressor.start(codestream, tune.force_precise, tune.want_fastest, thread_env.ptr());
 
         std::vector<int> stripe_heights(num_comps, height);
-        std::vector<int> sample_gaps(num_comps, num_comps);
-        std::vector<int> row_gaps(num_comps, width * num_comps);
         std::vector<int> precisions(num_comps, precision);
 
+        // Blosc2 chunks are one contiguous sample-interleaved buffer.  Kakadu
+        // has a dedicated single-buffer overload for this layout; passing an
+        // array of per-component pointers is more fragile for the full-image
+        // stripe used here.
+        if (debug) {
+            fprintf(stderr, "[blosc2_grok] Kakadu decoder: pulling full-image stripe\n");
+        }
         if (typesize == 1) {
-            std::vector<kdu_byte*> stripe_bufs(num_comps);
-            for (int c = 0; c < num_comps; ++c) {
-                stripe_bufs[c] = output + c;
-            }
-            decompressor.pull_stripe(stripe_bufs.data(), stripe_heights.data(),
-                                     sample_gaps.data(), row_gaps.data(),
+            decompressor.pull_stripe(output, stripe_heights.data(),
+                                     nullptr, nullptr, nullptr,
                                      precisions.data());
         } else if (typesize == 2) {
-            std::vector<kdu_int16*> stripe_bufs(num_comps);
             auto *output16 = reinterpret_cast<kdu_int16*>(output);
-            for (int c = 0; c < num_comps; ++c) {
-                stripe_bufs[c] = output16 + c;
-            }
             std::unique_ptr<bool[]> is_signed(new bool[num_comps]);
             for (int c = 0; c < num_comps; ++c) {
                 is_signed[c] = false;
             }
-            decompressor.pull_stripe(stripe_bufs.data(), stripe_heights.data(),
-                                     sample_gaps.data(), row_gaps.data(),
+            decompressor.pull_stripe(output16, stripe_heights.data(),
+                                     nullptr, nullptr, nullptr,
                                      precisions.data(), (const bool*)is_signed.get());
         }
 
+        if (debug) {
+            fprintf(stderr, "[blosc2_grok] Kakadu decoder: finishing stripe decompressor\n");
+        }
         decompressor.finish();
         codestream.destroy();
         if (is_jp2) {
