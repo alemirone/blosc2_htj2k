@@ -88,7 +88,7 @@ class MsgpackReader {
             case 0xcf: {
                 uint64_t v = 0;
                 if (!read_be64(v) ||
-                    v > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+                    v > static_cast<uint64_t>((std::numeric_limits<int64_t>::max)())) {
                     return false;
                 }
                 value = static_cast<int64_t>(v);
@@ -224,8 +224,8 @@ bool read_int32_array(MsgpackReader &reader,
     for (uint32_t i = 0; i < size; ++i) {
         int64_t v = 0;
         if (!reader.read_integer(v) ||
-            v < std::numeric_limits<int32_t>::min() ||
-            v > std::numeric_limits<int32_t>::max()) {
+            v < (std::numeric_limits<int32_t>::min)() ||
+            v > (std::numeric_limits<int32_t>::max)()) {
             return false;
         }
         values[i] = static_cast<int32_t>(v);
@@ -271,8 +271,8 @@ bool parse_b2nd_meta(const uint8_t *content, int32_t content_len, B2ndLayout &la
         !read_int32_array(reader, layout.ndim, layout.chunkshape) ||
         !read_int32_array(reader, layout.ndim, layout.blockshape) ||
         !reader.read_integer(dtype_format) ||
-        dtype_format < std::numeric_limits<int8_t>::min() ||
-        dtype_format > std::numeric_limits<int8_t>::max() ||
+        dtype_format < (std::numeric_limits<int8_t>::min)() ||
+        dtype_format > (std::numeric_limits<int8_t>::max)() ||
         !reader.read_string(layout.dtype)) {
         return false;
     }

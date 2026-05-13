@@ -23,6 +23,9 @@ if (APPLE)
     set(ENABLE_AVX2 OFF)
 endif()
 set(CMAKE_FIND_FRAMEWORK NEVER)
+if(WIN32)
+    add_compile_definitions(NOMINMAX)
+endif()
 
 # Grok's static-library bundling step writes to ${CMAKE_BINARY_DIR}/bin.
 # Create it explicitly so isolated wheel/editable builds do not depend on
