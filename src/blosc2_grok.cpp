@@ -9,7 +9,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
 #include <filesystem>
+#include <string>
 
 // Threading support for guarding Grok's process-global initialization against
 // concurrent encoder/decoder use.
@@ -24,6 +26,7 @@
 #include "codestream_detector.h"
 #include "jpeg2000_codec_paths.h"
 #include "plugin_loader.h"
+#include "runtime_config.h"
 
 #if defined(__linux__)
 #include <dlfcn.h>
@@ -55,6 +58,12 @@ using blosc2_grok_detail::make_htj2k_decode_request;
 using blosc2_grok_detail::make_htj2k_encode_request;
 using blosc2_grok_detail::make_j2k_decode_request;
 using blosc2_grok_detail::make_j2k_encode_request;
+using blosc2_grok_detail::configure_runtime;
+using blosc2_grok_detail::diagnose_runtime_json;
+using blosc2_grok_detail::freeze_runtime_config;
+using blosc2_grok_detail::last_runtime_error;
+using blosc2_grok_detail::list_plugins_json;
+using blosc2_grok_detail::set_runtime_error;
 using blosc2_grok_detail::unload_replacement_plugins;
 
 // Function responsibility map:
@@ -144,6 +153,15 @@ CodecFamily requested_encode_family(blosc2_cparams *cparams) {
     ensure_grok_initialized(0, false);
     return is_htj2k_requested(current_compress_params(cparams)) ? CodecFamily::HTJ2K
                                                                 : CodecFamily::J2K;
+}
+
+int copy_string_to_c_buffer(const std::string &value, char *buffer, size_t buffer_len) {
+    if (buffer != nullptr && buffer_len > 0) {
+        size_t copy_len = std::min(value.size(), buffer_len - 1);
+        memcpy(buffer, value.data(), copy_len);
+        buffer[copy_len] = '\0';
+    }
+    return static_cast<int>(value.size());
 }
 
 }  // namespace
@@ -294,6 +312,30 @@ void blosc2_grok_set_default_params(const int64_t *tile_size, const int64_t *til
     grk_initialize(nullptr, GRK_CPARAMETERS_DEFAULTS.numThreads, GRK_CPARAMETERS_DEFAULTS.verbose);
 }
 
+int blosc2_grok_configure(const blosc2_grok_runtime_config *config) {
+    if (config == nullptr) {
+        set_runtime_error("blosc2_grok_configure received a null config");
+        return -1;
+    }
+    if (config->struct_size < sizeof(blosc2_grok_runtime_config)) {
+        set_runtime_error("blosc2_grok_runtime_config has an unsupported struct_size");
+        return -1;
+    }
+    return configure_runtime(config->plugin_path, config->j2k_backend, config->htj2k_backend);
+}
+
+int blosc2_grok_list_plugins(char *buffer, size_t buffer_len) {
+    return copy_string_to_c_buffer(list_plugins_json(), buffer, buffer_len);
+}
+
+int blosc2_grok_diagnose(char *buffer, size_t buffer_len) {
+    return copy_string_to_c_buffer(diagnose_runtime_json(), buffer, buffer_len);
+}
+
+const char *blosc2_grok_last_error(void) {
+    return last_runtime_error();
+}
+
 
 // Blosc2 encoder entry point: route J2K to the J2K replacement/native path and
 // route HTJ2K exclusively to an HTJ2K replacement plugin.
@@ -306,6 +348,7 @@ int blosc2_grok_encoder(
     blosc2_cparams* cparams,
     const void* chunk
 ) {
+    freeze_runtime_config();
     const bool debug = std::getenv("BLOSC2_GROK_DEBUG") != nullptr;
     if (debug) {
         fprintf(stderr, "[blosc2_grok] blosc2_grok_encoder called: meta=%d, input_len=%d\n", meta, input_len);
@@ -336,6 +379,7 @@ int blosc2_grok_native_encoder(
 ) {
     int size = -1;
 
+    freeze_runtime_config();
     ensure_grok_initialized(0, false);
 
     // Read blosc2 metadata
@@ -397,7 +441,8 @@ int blosc2_grok_native_encoder(
     if (is_htj2k_requested(compressParams)) {
         fprintf(stderr,
                 "[blosc2_grok] Native Grok HTJ2K is not enabled; configure "
-                "BLOSC2_GROK_HTJ2K_REPLACEMENT_DIR with an HTJ2K backend\n");
+                "BLOSC2_GROK_HTJ2K_BACKEND with BLOSC2_GROK_PLUGIN_PATH, or set "
+                "legacy BLOSC2_GROK_HTJ2K_REPLACEMENT_DIR\n");
         if (codec_params == nullptr) {
             free(streamParams);
         }
@@ -516,6 +561,7 @@ int beach_decoder(grk_codec * codec, int rc) {
 // to the matching plugin family or native J2K fallback.
 int blosc2_grok_decoder(const uint8_t *input, int32_t input_len, uint8_t *output, int32_t output_len,
                         uint8_t meta, blosc2_dparams *dparams, const void *chunk) {
+    freeze_runtime_config();
     const bool debug = std::getenv("BLOSC2_GROK_DEBUG") != nullptr;
 
     CodecFamily family = detect_codestream_family(input, input_len);
@@ -543,6 +589,7 @@ int blosc2_grok_native_decoder(const uint8_t *input, int32_t input_len, uint8_t 
     (void)dparams;
     (void)chunk;
 
+    freeze_runtime_config();
     ensure_grok_initialized(0, false);
 
     // initialize decompress parameters

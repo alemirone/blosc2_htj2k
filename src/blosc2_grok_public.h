@@ -28,9 +28,17 @@ extern "C" {
 #include <stdbool.h>
 #endif
 
+#include <stddef.h>
 #include "blosc2.h"
 #include "blosc2/codecs-registry.h"
 #include "grok.h"
+
+typedef struct blosc2_grok_runtime_config {
+    uint32_t struct_size;
+    const char *plugin_path;
+    const char *j2k_backend;
+    const char *htj2k_backend;
+} blosc2_grok_runtime_config;
 
 
 BLOSC2_GROK_EXPORT int blosc2_grok_encoder(
@@ -58,6 +66,14 @@ BLOSC2_GROK_EXPORT int blosc2_grok_native_encoder(
 
 BLOSC2_GROK_EXPORT int blosc2_grok_native_decoder(const uint8_t *input, int32_t input_len, uint8_t *output, int32_t output_len,
                                                  uint8_t meta, blosc2_dparams *dparams, const void *chunk);
+
+BLOSC2_GROK_EXPORT int blosc2_grok_configure(const blosc2_grok_runtime_config *config);
+
+BLOSC2_GROK_EXPORT int blosc2_grok_list_plugins(char *buffer, size_t buffer_len);
+
+BLOSC2_GROK_EXPORT int blosc2_grok_diagnose(char *buffer, size_t buffer_len);
+
+BLOSC2_GROK_EXPORT const char *blosc2_grok_last_error(void);
 
 BLOSC2_GROK_EXPORT codec_info info = {
     .encoder=(char *)"blosc2_grok_encoder",

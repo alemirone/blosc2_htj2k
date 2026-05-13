@@ -2,7 +2,27 @@
 
 ## Changes from 0.3.5 to 0.3.6
 
-#XXX version-specific blurb XXX#
+* Add a runtime backend plugin mechanism for J2K and HTJ2K codecs.
+* Add family-specific plugin ABIs for J2K and HTJ2K backends.
+* Add an always-built J2K Grok replacement backend for testing the plugin path.
+* Add optional Kakadu J2K/HTJ2K backends when Kakadu headers/libraries are
+  available locally.
+* Add an optional OpenHTJ2K HTJ2K backend when the PR #190-style `uint16` API
+  is detected by CMake.
+* Add explicit runtime configuration APIs:
+  `blosc2_grok.configure()` for Python and `blosc2_grok_configure()` for C.
+* Add plugin listing, diagnostics and self-test helpers:
+  `list_plugins()`, `available_backends()`, `diagnose()`, `selftest()` and
+  the corresponding `python -m blosc2_grok` commands.
+* Preserve legacy environment variables for backend selection while adding
+  named backend variables through `BLOSC2_GROK_PLUGIN_PATH`,
+  `BLOSC2_GROK_J2K_BACKEND` and `BLOSC2_GROK_HTJ2K_BACKEND`.
+* Improve HDF5 deployment guidance for explicit loading and `LD_PRELOAD`
+  fallback use cases.
+* Keep Kakadu and OpenHTJ2K out of the core codec library; optional backends
+  are loaded through the plugin ABI.
+* Improve Kakadu J2K lossy interoperability with Grok by avoiding too-small
+  irreversible 9/7 quantization seeds for `uint16` streams.
 
 ## Changes from 0.3.4 to 0.3.5
 

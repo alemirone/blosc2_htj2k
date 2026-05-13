@@ -45,6 +45,7 @@ set(BLOSC2_GROK_CORE_SOURCES
     codestream_detector.cpp
     jpeg2000_codec_paths.cpp
     plugin_loader.cpp
+    runtime_config.cpp
 )
 add_library(blosc2_grok SHARED ${BLOSC2_GROK_CORE_SOURCES})
 

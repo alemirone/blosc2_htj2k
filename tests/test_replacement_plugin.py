@@ -180,6 +180,92 @@ def skip_if_loader_problem(result):
         pytest.skip(result.stderr)
 
 
+def test_python_plugin_listing_and_diagnostics(tmp_path):
+    """Python API must expose deterministic plugin inventory and diagnostics."""
+
+    script = r"""
+    import json
+
+    import blosc2_grok
+
+    listing = blosc2_grok.list_plugins()
+    plugins = listing["plugins"]
+    assert any(p["family"] == "j2k" and p["backend"] == "native" for p in plugins), listing
+    assert any(p["family"] == "j2k" and p["backend"] == "grok" for p in plugins), listing
+
+    backends = blosc2_grok.available_backends()
+    assert "native" in backends["j2k"], backends
+    assert "grok" in backends["j2k"], backends
+
+    diag = blosc2_grok.diagnose()
+    assert "plugin_roots" in diag, diag
+    assert "library_path" in diag, diag
+    assert "env" in diag, diag
+    assert "plugins" in diag, diag
+    print(json.dumps({"backends": backends}, sort_keys=True))
+    """
+
+    result = run_python(script, tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_python_selftest_for_base_backends(tmp_path):
+    """The public Python self-test must exercise base backends."""
+
+    script = r"""
+    import blosc2_grok
+
+    result = blosc2_grok.selftest(backends=["j2k/native", "j2k/grok"])
+    assert result["ok"], result
+    tested = {(item["family"], item["backend"]) for item in result["results"]}
+    assert ("j2k", "native") in tested
+    assert ("j2k", "grok") in tested
+    """
+
+    result = run_python(script, tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_python_configure_after_first_use_fails_clearly(tmp_path):
+    """Runtime configuration must be finalized before the codec is first used."""
+
+    script = (
+        ROUNDTRIP_SCRIPT
+        + r"""
+
+try:
+    blosc2_grok.configure(j2k_backend="grok")
+except RuntimeError as exc:
+    assert "already in use" in str(exc)
+else:
+    raise AssertionError("configure unexpectedly succeeded after first codec use")
+
+assert "already in use" in blosc2_grok.last_error()
+"""
+    )
+
+    result = run_python(script, tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_python_module_cli_list_plugins_and_diagnose(tmp_path):
+    """python -m blosc2_grok must expose the diagnostic commands."""
+
+    for option in ("--list-plugins", "--diagnose"):
+        result = subprocess.run(
+            [sys.executable, "-m", "blosc2_grok", option],
+            cwd=tmp_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert '"plugins"' in result.stdout
+
+
 def test_native_backend_roundtrip_without_replacement(tmp_path):
     """The normal J2K Grok path must work when no replacement is configured."""
 
@@ -244,6 +330,41 @@ def test_grok_j2k_replacement_backend_roundtrip(tmp_path):
     assert "Loaded J2K plugin: grok" in result.stderr
 
 
+def test_grok_j2k_named_backend_roundtrip(tmp_path):
+    """Named backend selection must find j2k/grok from a plugin root."""
+
+    plugin_root = Path(
+        metadata.distribution("blosc2_grok").locate_file("blosc2_grok/plugins")
+    ).resolve()
+    script = (
+        textwrap.dedent(
+            f"""
+        import os
+
+        import blosc2_grok
+
+        for name in (
+            "BLOSC2_GROK_REPLACEMENT_DIR",
+            "BLOSC2_GROK_HTJ2K_REPLACEMENT_DIR",
+            "BLOSC2_GROK_PLUGIN_PATH",
+            "BLOSC2_GROK_J2K_BACKEND",
+            "BLOSC2_GROK_HTJ2K_BACKEND",
+        ):
+            os.environ.pop(name, None)
+
+        os.environ["BLOSC2_GROK_DEBUG"] = "1"
+        blosc2_grok.configure(plugin_path={str(plugin_root)!r}, j2k_backend="grok")
+        """
+        )
+        + ROUNDTRIP_SCRIPT
+    )
+
+    result = run_python(script, tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Loaded J2K plugin: grok" in result.stderr
+
+
 def test_htj2k_uint16_rejected_without_htj2k_replacement(tmp_path):
     """HTJ2K must fail clearly when no HTJ2K backend is configured."""
 
@@ -263,7 +384,7 @@ def test_htj2k_uint16_rejected_without_htj2k_replacement(tmp_path):
     result = run_python(script, tmp_path)
 
     assert result.returncode != 0
-    assert "HTJ2K encoding requires BLOSC2_GROK_HTJ2K_REPLACEMENT_DIR" in result.stderr
+    assert "HTJ2K encoding requires an HTJ2K backend" in result.stderr
 
 
 def test_unknown_codestream_rejected_without_decoder_guessing(tmp_path):

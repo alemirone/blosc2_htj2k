@@ -17,8 +17,12 @@
 #include <cstdlib>
 #include <filesystem>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <system_error>
+#include <vector>
+
+#include "runtime_config.h"
 
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -64,7 +68,7 @@ bool has_plugin_library_extension(const fs::path &path) {
     std::string ext = path.extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return ext == ".so" || ext == ".dylib" || ext == ".dll";
+    return ext == ".so" || ext == ".dylib" || ext == ".dll" || ext == ".pyd";
 }
 
 #if defined(_WIN32)
@@ -91,19 +95,34 @@ std::string last_windows_loader_error() {
 #endif
 
 // Open a backend shared library with the platform dynamic loader.
-plugin_library_handle_t open_plugin_library(const fs::path &libpath, bool debug) {
+plugin_library_handle_t open_plugin_library(const fs::path &libpath,
+                                            bool debug,
+                                            std::string *error = nullptr) {
     std::string path = libpath.string();
 #if defined(_WIN32)
     plugin_library_handle_t handle = LoadLibraryA(path.c_str());
-    if (!handle && debug) {
-        fprintf(stderr, "[blosc2_grok] LoadLibrary failed for %s: %s\n",
-                path.c_str(), last_windows_loader_error().c_str());
+    if (!handle) {
+        std::string loader_error = last_windows_loader_error();
+        if (error) {
+            *error = loader_error;
+        }
+        if (debug) {
+            fprintf(stderr, "[blosc2_grok] LoadLibrary failed for %s: %s\n",
+                    path.c_str(), loader_error.c_str());
+        }
     }
     return handle;
 #else
     plugin_library_handle_t handle = dlopen(path.c_str(), RTLD_LAZY | RTLD_GLOBAL);
-    if (!handle && debug) {
-        fprintf(stderr, "[blosc2_grok] dlopen failed for %s: %s\n", path.c_str(), dlerror());
+    if (!handle) {
+        const char *loader_error = dlerror();
+        if (error) {
+            *error = loader_error ? loader_error : "unknown dlopen error";
+        }
+        if (debug) {
+            fprintf(stderr, "[blosc2_grok] dlopen failed for %s: %s\n",
+                    path.c_str(), loader_error ? loader_error : "unknown dlopen error");
+        }
     }
     return handle;
 #endif
@@ -255,6 +274,167 @@ bool is_valid_htj2k_plugin_descriptor(const htj2k_codec_plugin_t *plugin,
     return true;
 }
 
+std::vector<fs::path> candidate_library_paths(const PluginCandidate &candidate) {
+    std::vector<fs::path> libraries;
+    if (candidate.native) {
+        return libraries;
+    }
+
+    std::error_code ec;
+    if (fs::is_regular_file(candidate.path, ec)) {
+        if (has_plugin_library_extension(candidate.path)) {
+            libraries.push_back(candidate.path);
+        }
+        return libraries;
+    }
+    if (!fs::is_directory(candidate.path, ec)) {
+        return libraries;
+    }
+
+    for (fs::directory_iterator it(candidate.path, ec), end; !ec && it != end; it.increment(ec)) {
+        fs::path libpath = it->path();
+        if (it->is_regular_file(ec) && has_plugin_library_extension(libpath)) {
+            libraries.push_back(libpath);
+        }
+    }
+    std::sort(libraries.begin(), libraries.end());
+    return libraries;
+}
+
+struct PluginProbeResult {
+    PluginCandidate candidate;
+    std::string library;
+    bool exists = false;
+    bool loadable = false;
+    bool abi_valid = false;
+    std::string plugin_name;
+    std::string plugin_version;
+    std::string error;
+};
+
+PluginProbeResult probe_candidate(const PluginCandidate &candidate, bool debug) {
+    PluginProbeResult result;
+    result.candidate = candidate;
+    if (candidate.native) {
+        result.exists = true;
+        result.loadable = true;
+        result.abi_valid = true;
+        result.plugin_name = "native";
+        result.plugin_version = "built-in";
+        return result;
+    }
+
+    std::error_code ec;
+    result.exists = fs::exists(candidate.path, ec);
+    if (!result.exists) {
+        result.error = "path does not exist";
+        return result;
+    }
+
+    std::vector<fs::path> libraries = candidate_library_paths(candidate);
+    if (libraries.empty()) {
+        result.error = "no shared library found";
+        return result;
+    }
+
+    for (const fs::path &libpath : libraries) {
+        result.library = libpath.string();
+        std::string loader_error;
+        plugin_library_handle_t handle = open_plugin_library(libpath, debug, &loader_error);
+        if (!handle) {
+            result.error = loader_error.empty() ? "could not load shared library" : loader_error;
+            continue;
+        }
+        result.loadable = true;
+
+        bool valid = false;
+        if (candidate.family == PluginFamily::J2K) {
+            j2k_codec_plugin_t *plugin = find_j2k_plugin_descriptor(handle, libpath, debug);
+            valid = is_valid_j2k_plugin_descriptor(plugin, libpath, debug);
+            if (valid) {
+                result.plugin_name = plugin->name;
+                result.plugin_version = plugin->version;
+            }
+        } else {
+            htj2k_codec_plugin_t *plugin = find_htj2k_plugin_descriptor(handle, libpath, debug);
+            valid = is_valid_htj2k_plugin_descriptor(plugin, libpath, debug);
+            if (valid) {
+                result.plugin_name = plugin->name;
+                result.plugin_version = plugin->version;
+            }
+        }
+        close_plugin_library(handle);
+
+        if (valid) {
+            result.abi_valid = true;
+            result.error.clear();
+            return result;
+        }
+        result.error = "plugin descriptor missing or ABI mismatch";
+    }
+    return result;
+}
+
+bool same_candidate_identity(const PluginCandidate &lhs, const PluginCandidate &rhs) {
+    return lhs.family == rhs.family &&
+           lhs.native == rhs.native &&
+           lhs.backend == rhs.backend &&
+           lhs.path == rhs.path;
+}
+
+void mark_selected_plugins(std::vector<PluginProbeResult> &results) {
+    for (PluginProbeResult &result : results) {
+        result.candidate.selected = false;
+    }
+
+    for (PluginFamily family : {PluginFamily::J2K, PluginFamily::HTJ2K}) {
+        std::vector<PluginCandidate> load_candidates = plugin_load_candidates(family);
+        if (family == PluginFamily::J2K && load_candidates.empty()) {
+            for (PluginProbeResult &result : results) {
+                if (result.candidate.native && result.candidate.family == PluginFamily::J2K) {
+                    result.candidate.selected = true;
+                    break;
+                }
+            }
+            continue;
+        }
+
+        bool selected = false;
+        for (const PluginCandidate &load_candidate : load_candidates) {
+            for (PluginProbeResult &result : results) {
+                if (same_candidate_identity(result.candidate, load_candidate) &&
+                    result.loadable && result.abi_valid) {
+                    result.candidate.selected = true;
+                    selected = true;
+                    break;
+                }
+            }
+            if (selected) {
+                break;
+            }
+        }
+    }
+}
+
+void append_plugin_json(std::ostringstream &out, const PluginProbeResult &result) {
+    out << "{";
+    out << "\"family\":\"" << family_name(result.candidate.family) << "\",";
+    out << "\"backend\":\"" << json_escape(result.candidate.backend) << "\",";
+    out << "\"path\":\"" << json_escape(result.candidate.path.string()) << "\",";
+    out << "\"library\":\"" << json_escape(result.library) << "\",";
+    out << "\"name\":\"" << json_escape(result.plugin_name) << "\",";
+    out << "\"version\":\"" << json_escape(result.plugin_version) << "\",";
+    out << "\"native\":" << (result.candidate.native ? "true" : "false") << ",";
+    out << "\"legacy\":" << (result.candidate.legacy ? "true" : "false") << ",";
+    out << "\"direct\":" << (result.candidate.direct ? "true" : "false") << ",";
+    out << "\"exists\":" << (result.exists ? "true" : "false") << ",";
+    out << "\"loadable\":" << (result.loadable ? "true" : "false") << ",";
+    out << "\"abi_valid\":" << (result.abi_valid ? "true" : "false") << ",";
+    out << "\"selected\":" << (result.candidate.selected ? "true" : "false") << ",";
+    out << "\"error\":\"" << json_escape(result.error) << "\"";
+    out << "}";
+}
+
 }  // namespace
 
 j2k_codec_plugin_t* load_j2k_replacement_plugin() {
@@ -263,68 +443,37 @@ j2k_codec_plugin_t* load_j2k_replacement_plugin() {
         return s_j2k_replacement_plugin;
     }
 
-    const char* replacement_dir = getenv("BLOSC2_GROK_REPLACEMENT_DIR");
-    if (!replacement_dir || replacement_dir[0] == '\0') {
+    std::vector<PluginCandidate> candidates = plugin_load_candidates(PluginFamily::J2K);
+    if (candidates.empty()) {
         return nullptr;
     }
 
     bool debug = (getenv("BLOSC2_GROK_DEBUG") != nullptr);
-    fs::path replacement_path(replacement_dir);
-    std::error_code ec;
-    if (!fs::is_directory(replacement_path, ec)) {
-        if (debug) {
-            fprintf(stderr, "[blosc2_grok] J2K replacement directory is not readable: %s\n",
-                    replacement_dir);
-        }
-        return nullptr;
-    }
-
-    fs::directory_iterator it(replacement_path, ec);
-    fs::directory_iterator end;
-    if (ec) {
-        if (debug) {
-            fprintf(stderr, "[blosc2_grok] Could not scan replacement directory %s: %s\n",
-                    replacement_dir, ec.message().c_str());
-        }
-        return nullptr;
-    }
-
-    for (; it != end; it.increment(ec)) {
-        if (ec) {
-            if (debug) {
-                fprintf(stderr, "[blosc2_grok] Error while scanning %s: %s\n",
-                        replacement_dir, ec.message().c_str());
+    for (const PluginCandidate &candidate : candidates) {
+        for (const fs::path &libpath : candidate_library_paths(candidate)) {
+            plugin_library_handle_t handle = open_plugin_library(libpath, debug);
+            if (!handle) {
+                continue;
             }
-            break;
-        }
 
-        fs::path libpath = it->path();
-        if (!has_plugin_library_extension(libpath)) {
-            continue;
-        }
-
-        plugin_library_handle_t handle = open_plugin_library(libpath, debug);
-        if (!handle) {
-            continue;
-        }
-
-        j2k_codec_plugin_t *plugin = find_j2k_plugin_descriptor(handle, libpath, debug);
-        if (is_valid_j2k_plugin_descriptor(plugin, libpath, debug)) {
-            s_j2k_plugin_handle = handle;
-            s_j2k_replacement_plugin = plugin;
-            if (debug) {
-                std::string path = libpath.string();
-                fprintf(stderr, "[blosc2_grok] Loaded J2K plugin: %s %s from %s\n",
-                        plugin->name, plugin->version, path.c_str());
+            j2k_codec_plugin_t *plugin = find_j2k_plugin_descriptor(handle, libpath, debug);
+            if (is_valid_j2k_plugin_descriptor(plugin, libpath, debug)) {
+                s_j2k_plugin_handle = handle;
+                s_j2k_replacement_plugin = plugin;
+                if (debug) {
+                    std::string path = libpath.string();
+                    fprintf(stderr, "[blosc2_grok] Loaded J2K plugin: %s %s from %s\n",
+                            plugin->name, plugin->version, path.c_str());
+                }
+                return plugin;
             }
-            return plugin;
-        }
 
-        close_plugin_library(handle);
+            close_plugin_library(handle);
+        }
     }
 
     if (debug) {
-        fprintf(stderr, "[blosc2_grok] No valid J2K plugin found in %s\n", replacement_dir);
+        fprintf(stderr, "[blosc2_grok] No valid J2K plugin found in configured candidates\n");
     }
     return nullptr;
 }
@@ -335,68 +484,37 @@ htj2k_codec_plugin_t* load_htj2k_replacement_plugin() {
         return s_htj2k_replacement_plugin;
     }
 
-    const char* replacement_dir = getenv("BLOSC2_GROK_HTJ2K_REPLACEMENT_DIR");
-    if (!replacement_dir || replacement_dir[0] == '\0') {
+    std::vector<PluginCandidate> candidates = plugin_load_candidates(PluginFamily::HTJ2K);
+    if (candidates.empty()) {
         return nullptr;
     }
 
     bool debug = (getenv("BLOSC2_GROK_DEBUG") != nullptr);
-    fs::path replacement_path(replacement_dir);
-    std::error_code ec;
-    if (!fs::is_directory(replacement_path, ec)) {
-        if (debug) {
-            fprintf(stderr, "[blosc2_grok] HTJ2K replacement directory is not readable: %s\n",
-                    replacement_dir);
-        }
-        return nullptr;
-    }
-
-    fs::directory_iterator it(replacement_path, ec);
-    fs::directory_iterator end;
-    if (ec) {
-        if (debug) {
-            fprintf(stderr, "[blosc2_grok] Could not scan HTJ2K replacement directory %s: %s\n",
-                    replacement_dir, ec.message().c_str());
-        }
-        return nullptr;
-    }
-
-    for (; it != end; it.increment(ec)) {
-        if (ec) {
-            if (debug) {
-                fprintf(stderr, "[blosc2_grok] Error while scanning %s: %s\n",
-                        replacement_dir, ec.message().c_str());
+    for (const PluginCandidate &candidate : candidates) {
+        for (const fs::path &libpath : candidate_library_paths(candidate)) {
+            plugin_library_handle_t handle = open_plugin_library(libpath, debug);
+            if (!handle) {
+                continue;
             }
-            break;
-        }
 
-        fs::path libpath = it->path();
-        if (!has_plugin_library_extension(libpath)) {
-            continue;
-        }
-
-        plugin_library_handle_t handle = open_plugin_library(libpath, debug);
-        if (!handle) {
-            continue;
-        }
-
-        htj2k_codec_plugin_t *plugin = find_htj2k_plugin_descriptor(handle, libpath, debug);
-        if (is_valid_htj2k_plugin_descriptor(plugin, libpath, debug)) {
-            s_htj2k_plugin_handle = handle;
-            s_htj2k_replacement_plugin = plugin;
-            if (debug) {
-                std::string path = libpath.string();
-                fprintf(stderr, "[blosc2_grok] Loaded HTJ2K plugin: %s %s from %s\n",
-                        plugin->name, plugin->version, path.c_str());
+            htj2k_codec_plugin_t *plugin = find_htj2k_plugin_descriptor(handle, libpath, debug);
+            if (is_valid_htj2k_plugin_descriptor(plugin, libpath, debug)) {
+                s_htj2k_plugin_handle = handle;
+                s_htj2k_replacement_plugin = plugin;
+                if (debug) {
+                    std::string path = libpath.string();
+                    fprintf(stderr, "[blosc2_grok] Loaded HTJ2K plugin: %s %s from %s\n",
+                            plugin->name, plugin->version, path.c_str());
+                }
+                return plugin;
             }
-            return plugin;
-        }
 
-        close_plugin_library(handle);
+            close_plugin_library(handle);
+        }
     }
 
     if (debug) {
-        fprintf(stderr, "[blosc2_grok] No valid HTJ2K plugin found in %s\n", replacement_dir);
+        fprintf(stderr, "[blosc2_grok] No valid HTJ2K plugin found in configured candidates\n");
     }
     return nullptr;
 }
@@ -413,6 +531,38 @@ void unload_replacement_plugins() {
     }
     s_j2k_replacement_plugin = nullptr;
     s_htj2k_replacement_plugin = nullptr;
+}
+
+std::string list_plugins_json() {
+    bool debug = (getenv("BLOSC2_GROK_DEBUG") != nullptr);
+    std::vector<PluginProbeResult> results;
+    for (const PluginCandidate &candidate : plugin_inventory_candidates()) {
+        results.push_back(probe_candidate(candidate, debug));
+    }
+    mark_selected_plugins(results);
+
+    std::ostringstream out;
+    out << "{\"plugins\":[";
+    for (size_t i = 0; i < results.size(); ++i) {
+        if (i != 0) {
+            out << ",";
+        }
+        append_plugin_json(out, results[i]);
+    }
+    out << "]}";
+    return out.str();
+}
+
+std::string diagnose_runtime_json() {
+    std::string runtime_json = runtime_diagnostics_json();
+    std::string plugins_json = list_plugins_json();
+
+    if (!runtime_json.empty() && runtime_json.back() == '}' &&
+        plugins_json.rfind("{\"plugins\":", 0) == 0) {
+        return runtime_json.substr(0, runtime_json.size() - 1) + "," +
+               plugins_json.substr(1);
+    }
+    return "{\"runtime\":" + runtime_json + ",\"plugins\":" + plugins_json + "}";
 }
 
 }  // namespace blosc2_grok_detail

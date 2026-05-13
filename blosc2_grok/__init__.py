@@ -7,8 +7,12 @@
 ##############################################################################
 
 import ctypes
+import json
 import os
 import platform
+import subprocess
+import sys
+import tempfile
 from enum import Enum
 from pathlib import Path
 import atexit
@@ -291,6 +295,203 @@ def print_libpath():
     print(libpath, end="")
 
 
+class _RuntimeConfig(ctypes.Structure):
+    _fields_ = [
+        ("struct_size", ctypes.c_uint32),
+        ("plugin_path", ctypes.c_char_p),
+        ("j2k_backend", ctypes.c_char_p),
+        ("htj2k_backend", ctypes.c_char_p),
+    ]
+
+
+lib.blosc2_grok_configure.argtypes = [ctypes.POINTER(_RuntimeConfig)]
+lib.blosc2_grok_configure.restype = ctypes.c_int
+lib.blosc2_grok_list_plugins.argtypes = [ctypes.c_char_p, ctypes.c_size_t]
+lib.blosc2_grok_list_plugins.restype = ctypes.c_int
+lib.blosc2_grok_diagnose.argtypes = [ctypes.c_char_p, ctypes.c_size_t]
+lib.blosc2_grok_diagnose.restype = ctypes.c_int
+lib.blosc2_grok_last_error.argtypes = []
+lib.blosc2_grok_last_error.restype = ctypes.c_char_p
+
+
+def _optional_bytes(value):
+    if value is None:
+        return None
+    return str(value).encode("utf-8")
+
+
+def last_error():
+    value = lib.blosc2_grok_last_error()
+    return value.decode("utf-8") if value else ""
+
+
+def configure(plugin_path=None, j2k_backend=None, htj2k_backend=None):
+    cfg = _RuntimeConfig()
+    cfg.struct_size = ctypes.sizeof(_RuntimeConfig)
+    cfg.plugin_path = _optional_bytes(plugin_path)
+    cfg.j2k_backend = _optional_bytes(j2k_backend)
+    cfg.htj2k_backend = _optional_bytes(htj2k_backend)
+    rc = lib.blosc2_grok_configure(ctypes.byref(cfg))
+    if rc != 0:
+        raise RuntimeError(last_error() or "blosc2_grok_configure failed")
+
+
+def _read_json_from_c(func):
+    needed = func(None, 0)
+    if needed < 0:
+        raise RuntimeError(last_error() or "blosc2_grok runtime query failed")
+    buffer = ctypes.create_string_buffer(needed + 1)
+    actual = func(buffer, len(buffer))
+    if actual < 0:
+        raise RuntimeError(last_error() or "blosc2_grok runtime query failed")
+    if actual >= len(buffer):
+        buffer = ctypes.create_string_buffer(actual + 1)
+        actual = func(buffer, len(buffer))
+        if actual < 0:
+            raise RuntimeError(last_error() or "blosc2_grok runtime query failed")
+    return json.loads(buffer.value.decode("utf-8"))
+
+
+def list_plugins():
+    return _read_json_from_c(lib.blosc2_grok_list_plugins)
+
+
+def diagnose():
+    return _read_json_from_c(lib.blosc2_grok_diagnose)
+
+
+def available_backends():
+    result = {"j2k": [], "htj2k": []}
+    for plugin in list_plugins().get("plugins", []):
+        if plugin.get("loadable") and plugin.get("abi_valid"):
+            family = plugin.get("family")
+            backend = plugin.get("backend")
+            if family in result and backend not in result[family]:
+                result[family].append(backend)
+    return result
+
+
+def _plugin_root_from_record(plugin):
+    path = plugin.get("path") or ""
+    if not path:
+        return None
+    p = Path(path)
+    family = plugin.get("family")
+    if p.name == plugin.get("backend") and p.parent.name == family:
+        return str(p.parent.parent)
+    return str(p)
+
+
+def _selftest_script(family, backend, plugin_root):
+    clear_env = """
+import os
+for name in (
+    "BLOSC2_GROK_REPLACEMENT_DIR",
+    "BLOSC2_GROK_HTJ2K_REPLACEMENT_DIR",
+    "BLOSC2_GROK_PLUGIN_PATH",
+    "BLOSC2_GROK_J2K_BACKEND",
+    "BLOSC2_GROK_HTJ2K_BACKEND",
+):
+    os.environ.pop(name, None)
+"""
+    configure_call = ""
+    if family == "j2k" and backend != "native":
+        configure_call = f"blosc2_grok.configure(plugin_path={plugin_root!r}, j2k_backend={backend!r})"
+    elif family == "htj2k":
+        configure_call = f"blosc2_grok.configure(plugin_path={plugin_root!r}, htj2k_backend={backend!r})"
+
+    ht_mode = "blosc2_grok.set_params_defaults(mode=blosc2_grok.GrkMode.HT)" if family == "htj2k" else ""
+    return f"""
+import blosc2
+import blosc2_grok
+import numpy as np
+
+{clear_env}
+{configure_call}
+{ht_mode}
+
+data = (np.arange(64 * 64, dtype=np.uint16).reshape(64, 64) % 4096)
+cparams = {{
+    "codec": blosc2.Codec.GROK,
+    "filters": [],
+    "splitmode": blosc2.SplitMode.NEVER_SPLIT,
+}}
+compressed = blosc2.asarray(data, chunks=data.shape, blocks=data.shape, cparams=cparams)
+np.testing.assert_array_equal(compressed[...], data)
+"""
+
+
+def selftest(backends="available"):
+    plugins = list_plugins().get("plugins", [])
+    if backends != "available" and isinstance(backends, str):
+        backends = [backends]
+
+    broken = [
+        p for p in plugins
+        if not p.get("native") and p.get("exists") and (not p.get("loadable") or not p.get("abi_valid"))
+    ]
+    if broken and backends == "available":
+        raise RuntimeError(json.dumps({"ok": False, "broken_plugins": broken}, indent=2))
+
+    available = [
+        p for p in plugins
+        if p.get("loadable") and p.get("abi_valid") and not (p.get("family") == "htj2k" and p.get("backend") == "native")
+    ]
+    if backends != "available":
+        requested = set(backends)
+        available = [p for p in available if f"{p.get('family')}/{p.get('backend')}" in requested]
+
+    results = []
+    failed = []
+    for plugin in available:
+        family = plugin.get("family")
+        backend = plugin.get("backend")
+        plugin_root = _plugin_root_from_record(plugin)
+        script = _selftest_script(family, backend, plugin_root)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proc = subprocess.run(
+                [sys.executable, "-c", script],
+                cwd=tmpdir,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        item = {
+            "family": family,
+            "backend": backend,
+            "ok": proc.returncode == 0,
+            "stdout": proc.stdout,
+            "stderr": proc.stderr,
+        }
+        results.append(item)
+        if proc.returncode != 0:
+            failed.append(item)
+
+    summary = {"ok": not failed, "results": results}
+    if failed:
+        raise RuntimeError(json.dumps(summary, indent=2))
+    return summary
+
+
+def _main(argv=None):
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="python -m blosc2_grok")
+    parser.add_argument("--list-plugins", action="store_true")
+    parser.add_argument("--diagnose", action="store_true")
+    parser.add_argument("--selftest", action="store_true")
+    args = parser.parse_args(argv)
+
+    if args.list_plugins:
+        print(json.dumps(list_plugins(), indent=2))
+    elif args.diagnose:
+        print(json.dumps(diagnose(), indent=2))
+    elif args.selftest:
+        print(json.dumps(selftest(), indent=2))
+    else:
+        print_libpath()
+
+
 # Deinitialize grok when exiting
 @atexit.register
 def destroy():
@@ -399,4 +600,4 @@ def set_params_defaults(**kwargs):
 
 
 if __name__ == "__main__":
-    print_libpath()
+    _main()
