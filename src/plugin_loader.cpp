@@ -450,6 +450,12 @@ j2k_codec_plugin_t* load_j2k_replacement_plugin() {
 
     bool debug = (getenv("BLOSC2_GROK_DEBUG") != nullptr);
     for (const PluginCandidate &candidate : candidates) {
+        if (candidate.native) {
+            if (debug) {
+                fprintf(stderr, "[blosc2_grok] Using native J2K backend\n");
+            }
+            return nullptr;
+        }
         for (const fs::path &libpath : candidate_library_paths(candidate)) {
             plugin_library_handle_t handle = open_plugin_library(libpath, debug);
             if (!handle) {

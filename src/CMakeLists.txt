@@ -93,6 +93,9 @@ install(TARGETS blosc2_grok
     RUNTIME DESTINATION blosc2_grok
     LIBRARY DESTINATION blosc2_grok
 )
+install(FILES "${CMAKE_SOURCE_DIR}/blosc2_grok/blosc2_grok_plugins.json"
+    DESTINATION blosc2_grok
+)
 # Note: blosc2_grok.h and grok headers are not installed in the wheel
 # Python users don't need them, and C developers should build from source
 

@@ -201,6 +201,11 @@ def test_python_plugin_listing_and_diagnostics(tmp_path):
     assert "plugin_roots" in diag, diag
     assert "library_path" in diag, diag
     assert "default_plugin_root" in diag, diag
+    assert "manifest_path" in diag, diag
+    assert diag["manifest_exists"], diag
+    assert diag["manifest_loaded"], diag
+    assert diag["manifest_priority"]["j2k"][0] == "native", diag
+    assert "htj2k" in diag["manifest_priority"], diag
     assert "env" in diag, diag
     assert "plugins" in diag, diag
     print(json.dumps({"backends": backends}, sort_keys=True))
@@ -251,7 +256,7 @@ def test_python_configure_uses_default_plugin_root(tmp_path):
     diag = blosc2_grok.diagnose()
     assert diag["explicit_api"], diag
     assert diag["j2k_backend"] == "grok", diag
-    assert diag["plugin_path"] == "", diag
+    assert diag["plugin_path"] in ("", "plugins"), diag
     assert diag["default_plugin_root"] in diag["plugin_roots"], diag
 
     listing = blosc2_grok.list_plugins()
@@ -264,6 +269,93 @@ def test_python_configure_uses_default_plugin_root(tmp_path):
     """
 
     result = run_python(script, tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_manifest_priorities_are_family_specific(tmp_path):
+    """The default manifest provides separate J2K and HTJ2K backend priorities."""
+
+    script = r"""
+    import os
+
+    import blosc2_grok
+
+    for name in (
+        "BLOSC2_GROK_REPLACEMENT_DIR",
+        "BLOSC2_GROK_HTJ2K_REPLACEMENT_DIR",
+        "BLOSC2_GROK_PLUGIN_PATH",
+        "BLOSC2_GROK_J2K_BACKEND",
+        "BLOSC2_GROK_HTJ2K_BACKEND",
+    ):
+        os.environ.pop(name, None)
+
+    diag = blosc2_grok.diagnose()
+    assert diag["manifest_loaded"], diag
+    assert diag["manifest_priority"]["j2k"] == ["native", "grok", "kakadu"], diag
+    assert diag["manifest_priority"]["htj2k"] == ["kakadu", "openhtj2k"], diag
+
+    listing = blosc2_grok.list_plugins()
+    assert any(
+        p["family"] == "j2k"
+        and p["backend"] == "native"
+        and p["selected"]
+        for p in listing["plugins"]
+    ), listing
+    """
+
+    result = run_python(script, tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_j2k_and_htj2k_backends_can_be_used_in_one_process(tmp_path):
+    """A process may use one selected J2K backend and one selected HTJ2K backend."""
+
+    script = r"""
+    import os
+
+    import blosc2
+    import blosc2_grok
+    import numpy as np
+
+    for name in (
+        "BLOSC2_GROK_REPLACEMENT_DIR",
+        "BLOSC2_GROK_HTJ2K_REPLACEMENT_DIR",
+        "BLOSC2_GROK_PLUGIN_PATH",
+        "BLOSC2_GROK_J2K_BACKEND",
+        "BLOSC2_GROK_HTJ2K_BACKEND",
+    ):
+        os.environ.pop(name, None)
+
+    backends = blosc2_grok.available_backends()
+    htj2k_backend = next(
+        (name for name in ("kakadu", "openhtj2k") if name in backends["htj2k"]),
+        None,
+    )
+    if htj2k_backend is None:
+        print("no optional HTJ2K backend installed")
+        raise SystemExit(0)
+
+    blosc2_grok.configure(j2k_backend="grok", htj2k_backend=htj2k_backend)
+
+    data = (np.arange(64 * 64, dtype=np.uint16).reshape(64, 64) % 4096)
+    cparams = {
+        "codec": blosc2.Codec.GROK,
+        "filters": [],
+        "splitmode": blosc2.SplitMode.NEVER_SPLIT,
+    }
+
+    j2k = blosc2.asarray(data, chunks=data.shape, blocks=data.shape, cparams=cparams)
+    np.testing.assert_array_equal(j2k[...], data)
+
+    blosc2_grok.set_params_defaults(mode=blosc2_grok.GrkMode.HT)
+    htj2k = blosc2.asarray(data, chunks=data.shape, blocks=data.shape, cparams=cparams)
+    np.testing.assert_array_equal(htj2k[...], data)
+    """
+
+    result = run_python(script, tmp_path)
+    skip_if_loader_problem(result)
 
     assert result.returncode == 0, result.stdout + result.stderr
 
@@ -414,7 +506,7 @@ def test_htj2k_uint16_rejected_without_htj2k_replacement(tmp_path):
         import os
 
         os.environ.pop("BLOSC2_GROK_REPLACEMENT_DIR", None)
-        os.environ.pop("BLOSC2_GROK_HTJ2K_REPLACEMENT_DIR", None)
+        os.environ["BLOSC2_GROK_HTJ2K_REPLACEMENT_DIR"] = "__missing_htj2k_backend__"
         os.environ["BLOSC2_GROK_DEBUG"] = "1"
         """
         )
