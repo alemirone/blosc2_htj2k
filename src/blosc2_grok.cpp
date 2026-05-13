@@ -6,6 +6,12 @@
  * License: GNU Affero General Public License v3.0 (see LICENSE.txt)
 **********************************************************************/
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#endif
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -157,7 +163,7 @@ CodecFamily requested_encode_family(blosc2_cparams *cparams) {
 
 int copy_string_to_c_buffer(const std::string &value, char *buffer, size_t buffer_len) {
     if (buffer != nullptr && buffer_len > 0) {
-        size_t copy_len = std::min(value.size(), buffer_len - 1);
+        size_t copy_len = (std::min)(value.size(), buffer_len - 1);
         memcpy(buffer, value.data(), copy_len);
         buffer[copy_len] = '\0';
     }

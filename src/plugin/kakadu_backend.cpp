@@ -6,6 +6,12 @@
  * License: GNU Affero General Public License v3.0 (see LICENSE.txt)
 **********************************************************************/
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#endif
+
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -295,7 +301,7 @@ void apply_kakadu_rate_defaults(siz_params &siz, int32_t precision, bool rate_co
     if (!kakadu_extra_has_param("qstep") && !kakadu_extra_has_param("qfactor")) {
         const double nominal_qstep = std::ldexp(1.0, -(precision + 5));
         const double grok_readable_floor = std::ldexp(1.0, -18);
-        const double qstep = std::max(nominal_qstep, grok_readable_floor);
+        const double qstep = (std::max)(nominal_qstep, grok_readable_floor);
         char cmd[64];
         std::snprintf(cmd, sizeof(cmd), "Qstep=%.17g", qstep);
         bool ok = siz.parse_string(cmd);
