@@ -27,6 +27,7 @@
 #include <memory>
 
 #include "blosc2_grok.h"
+#include "b2nd_layout.h"
 #include "blosc2_grok_public.h"
 #include "codec_requests.h"
 #include "codestream_detector.h"
@@ -34,29 +35,17 @@
 #include "plugin_loader.h"
 #include "runtime_config.h"
 
-#if defined(__linux__)
-#include <dlfcn.h>
-#endif
-
-#ifdef BLOSC2_MAX_DIM
-#define BLOSC2_GROK_MAX_DIM BLOSC2_MAX_DIM
-#else
-#define BLOSC2_GROK_MAX_DIM B2ND_MAX_DIM
-#endif
-
 static grk_cparameters GRK_CPARAMETERS_DEFAULTS = {0};
 static bool GRK_INITIALIZED = false;
 
-#if defined(__linux__)
-static void *BLOSC2_GROK_GLOBAL_BLOSC2_HANDLE = nullptr;
-#endif
-
+using blosc2_grok_detail::B2ndLayout;
 using blosc2_grok_detail::CodecFamily;
 using blosc2_grok_detail::decode_htj2k_with_plugin;
 using blosc2_grok_detail::decode_j2k_with_plugin_or_native;
 using blosc2_grok_detail::detect_codestream_family;
 using blosc2_grok_detail::encode_htj2k_with_plugin;
 using blosc2_grok_detail::encode_j2k_with_plugin_or_native;
+using blosc2_grok_detail::image_layout_from_b2nd;
 using blosc2_grok_detail::is_htj2k_requested;
 using blosc2_grok_detail::load_htj2k_replacement_plugin;
 using blosc2_grok_detail::load_j2k_replacement_plugin;
@@ -64,6 +53,7 @@ using blosc2_grok_detail::make_htj2k_decode_request;
 using blosc2_grok_detail::make_htj2k_encode_request;
 using blosc2_grok_detail::make_j2k_decode_request;
 using blosc2_grok_detail::make_j2k_encode_request;
+using blosc2_grok_detail::read_b2nd_layout;
 using blosc2_grok_detail::configure_runtime;
 using blosc2_grok_detail::diagnose_runtime_json;
 using blosc2_grok_detail::freeze_runtime_config;
@@ -89,48 +79,6 @@ using blosc2_grok_detail::unload_replacement_plugins;
 // - blosc2_grok_init(), blosc2_grok_set_default_params(): public runtime setup.
 // - beach_decoder(): shared decoder cleanup helper.
 namespace {
-
-#if defined(__linux__)
-// HDF5's Blosc2 filter can contain its own embedded C-Blosc2 symbols and then
-// dlopen this codec library as an external codec.  Preload the wheel's
-// libblosc2 with global visibility so backend libraries resolve against the
-// same Blosc2 runtime as blosc2_grok instead of the HDF5 filter's private copy.
-__attribute__((constructor))
-void preload_blosc2_dependency_global() {
-    if (BLOSC2_GROK_GLOBAL_BLOSC2_HANDLE != nullptr) {
-        return;
-    }
-
-    const int flags = RTLD_NOW | RTLD_GLOBAL
-#ifdef RTLD_NODELETE
-        | RTLD_NODELETE
-#endif
-        ;
-
-    Dl_info info;
-    if (dladdr(reinterpret_cast<void *>(&preload_blosc2_dependency_global), &info) &&
-        info.dli_fname != nullptr) {
-        std::filesystem::path self_dir =
-            std::filesystem::path(info.dli_fname).parent_path();
-        std::filesystem::path libblosc2_path =
-            (self_dir / ".." / "blosc2" / "lib" / "libblosc2.so").lexically_normal();
-        BLOSC2_GROK_GLOBAL_BLOSC2_HANDLE = dlopen(libblosc2_path.c_str(), flags);
-    }
-
-    if (BLOSC2_GROK_GLOBAL_BLOSC2_HANDLE == nullptr) {
-        BLOSC2_GROK_GLOBAL_BLOSC2_HANDLE = dlopen("libblosc2.so", flags);
-    }
-
-    if (std::getenv("BLOSC2_GROK_DEBUG") != nullptr) {
-        if (BLOSC2_GROK_GLOBAL_BLOSC2_HANDLE != nullptr) {
-            fprintf(stderr, "[blosc2_grok] Preloaded libblosc2 with global visibility\n");
-        } else {
-            fprintf(stderr, "[blosc2_grok] Could not preload libblosc2 globally: %s\n",
-                    dlerror());
-        }
-    }
-}
-#endif
 
 // Return the process-wide lock protecting Grok initialization.
 std::mutex &grok_init_mutex() {
@@ -388,46 +336,19 @@ int blosc2_grok_native_encoder(
     freeze_runtime_config();
     ensure_grok_initialized(0, false);
 
-    // Read blosc2 metadata
-    uint8_t *content;
-    int32_t content_len;
-    BLOSC_ERROR(blosc2_meta_get((blosc2_schunk*)cparams->schunk, "b2nd",
-                                &content, &content_len));
-
-    int8_t ndim;
-    int64_t shape[BLOSC2_GROK_MAX_DIM];
-    int32_t chunkshape[BLOSC2_GROK_MAX_DIM];
-    int32_t blockshape[BLOSC2_GROK_MAX_DIM];
-    char *dtype;
-    int8_t dtype_format;
-    BLOSC_ERROR(
-        b2nd_deserialize_meta(content, content_len, &ndim,
-                              shape, chunkshape, blockshape, &dtype, &dtype_format)
-    );
-    free(content);
-    free(dtype);
-
-    // Determine image dimensions
-    // Ignore leading dimensions if they are 1
-    uint32_t igdim = 0;
-    for (int i = 0; i < ndim; ++i) {
-        if (blockshape[i] == 1) {
-            igdim++;
-        } else {
-            break;
-        }
-    }
-    // Blosc2 b2nd stores image-like tensors as (..., Y, X[, C]).
-    // Map explicitly to codec (X, Y) convention.
-    uint32_t dimY = blockshape[igdim];
-    uint32_t dimX = blockshape[igdim + 1];
-    uint32_t numComps = 1;
-    if ((ndim - igdim) == 3) {
-        // Single image with more than 1 component
-        numComps = blockshape[igdim + 2];
+    B2ndLayout layout;
+    int64_t dim_x = 0;
+    int64_t dim_y = 0;
+    int32_t num_comps = 0;
+    if (!read_b2nd_layout(cparams, layout) ||
+        !image_layout_from_b2nd(layout, dim_x, dim_y, num_comps)) {
+        return -1;
     }
 
-    const uint32_t typesize = ((blosc2_schunk*)cparams->schunk)->typesize;
+    const uint32_t dimX = static_cast<uint32_t>(dim_x);
+    const uint32_t dimY = static_cast<uint32_t>(dim_y);
+    const uint32_t numComps = static_cast<uint32_t>(num_comps);
+    const uint32_t typesize = static_cast<uint32_t>(layout.typesize);
     const uint32_t precision = 8 * typesize;
 
     // initialize compress parameters

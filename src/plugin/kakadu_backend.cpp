@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "blosc2.h"
-#include "b2nd.h"
+#include "b2nd_layout.h"
 #include "htj2k_codec_api.h"
 #include "j2k_codec_api.h"
 
@@ -36,14 +36,11 @@
 #include "kdu_threads.h"
 #include "kdu_utils.h"
 
-#ifdef BLOSC2_MAX_DIM
-#define BLOSC2_GROK_MAX_DIM BLOSC2_MAX_DIM
-#else
-#define BLOSC2_GROK_MAX_DIM B2ND_MAX_DIM
-#endif
-
 using namespace kdu_core;
 using namespace kdu_supp;
+using blosc2_grok_detail::B2ndLayout;
+using blosc2_grok_detail::image_layout_from_b2nd;
+using blosc2_grok_detail::read_b2nd_layout;
 
 // Function responsibility map:
 //
@@ -387,51 +384,14 @@ class MemTarget : public kdu_compressed_target_nonnative {
 bool load_b2nd_info(blosc2_cparams *cparams,
                     int64_t &dim_x, int64_t &dim_y,
                     int32_t &num_comps, int32_t &typesize) {
-    uint8_t *content = nullptr;
-    int32_t content_len = 0;
-    if (blosc2_meta_get((blosc2_schunk*)cparams->schunk, "b2nd",
-                        &content, &content_len) < 0) {
+    B2ndLayout layout;
+    if (!read_b2nd_layout(cparams, layout)) {
         return false;
     }
-
-    int8_t ndim = 0;
-    int64_t shape[BLOSC2_GROK_MAX_DIM];
-    int32_t chunkshape[BLOSC2_GROK_MAX_DIM];
-    int32_t blockshape[BLOSC2_GROK_MAX_DIM];
-    char *dtype = nullptr;
-    int8_t dtype_format = 0;
-    int rc = b2nd_deserialize_meta(content, content_len, &ndim,
-                                   shape, chunkshape, blockshape,
-                                   &dtype, &dtype_format);
-    free(content);
-    if (rc < 0) {
-        free(dtype);
+    if (!image_layout_from_b2nd(layout, dim_x, dim_y, num_comps)) {
         return false;
     }
-    free(dtype);
-
-    // Determine image dimensions (same logic as grok backend)
-    uint32_t igdim = 0;
-    for (int i = 0; i < ndim; ++i) {
-        if (blockshape[i] == 1) {
-            igdim++;
-        } else {
-            break;
-        }
-    }
-    if ((ndim - igdim) < 2) {
-        return false;
-    }
-    // Blosc2 b2nd stores image-like tensors as (..., Y, X[, C]).
-    // Map to Kakadu's (X, Y) convention explicitly.
-    dim_y = blockshape[igdim];
-    dim_x = blockshape[igdim + 1];
-    num_comps = 1;
-    if ((ndim - igdim) == 3) {
-        num_comps = blockshape[igdim + 2];
-    }
-
-    typesize = ((blosc2_schunk*)cparams->schunk)->typesize;
+    typesize = layout.typesize;
     return true;
 }
 

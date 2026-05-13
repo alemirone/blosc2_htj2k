@@ -40,6 +40,7 @@ target_include_directories(grokj2k
 # backends link to the native Grok entry points, so the main target must be
 # linkable and not only a Python extension module.
 set(BLOSC2_GROK_CORE_SOURCES
+    b2nd_layout.cpp
     blosc2_grok.cpp
     codec_requests.cpp
     codestream_detector.cpp
@@ -138,13 +139,13 @@ find_library(KAKADU_AUX_LIBRARY
 )
 
 if(KAKADU_INCLUDE_DIR AND KAKADU_CORE_LIBRARY AND KAKADU_AUX_LIBRARY)
-    add_library(blosc2_kakadu_j2k_backend SHARED plugin/kakadu_backend.cpp plugin/j2k_kakadu_plugin.cpp)
-    target_include_directories(blosc2_kakadu_j2k_backend PRIVATE ${KAKADU_INCLUDE_DIR} ${BLOSC2_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/plugin)
-    target_link_libraries(blosc2_kakadu_j2k_backend PRIVATE ${KAKADU_CORE_LIBRARY} ${KAKADU_AUX_LIBRARY} ${BLOSC2_LIBRARIES})
+    add_library(blosc2_kakadu_j2k_backend SHARED b2nd_layout.cpp plugin/kakadu_backend.cpp plugin/j2k_kakadu_plugin.cpp)
+    target_include_directories(blosc2_kakadu_j2k_backend PRIVATE ${KAKADU_INCLUDE_DIR} ${BLOSC2_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/plugin)
+    target_link_libraries(blosc2_kakadu_j2k_backend PRIVATE ${KAKADU_CORE_LIBRARY} ${KAKADU_AUX_LIBRARY})
 
-    add_library(blosc2_kakadu_htj2k_backend SHARED plugin/kakadu_backend.cpp plugin/htj2k_kakadu_plugin.cpp)
-    target_include_directories(blosc2_kakadu_htj2k_backend PRIVATE ${KAKADU_INCLUDE_DIR} ${BLOSC2_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/plugin)
-    target_link_libraries(blosc2_kakadu_htj2k_backend PRIVATE ${KAKADU_CORE_LIBRARY} ${KAKADU_AUX_LIBRARY} ${BLOSC2_LIBRARIES})
+    add_library(blosc2_kakadu_htj2k_backend SHARED b2nd_layout.cpp plugin/kakadu_backend.cpp plugin/htj2k_kakadu_plugin.cpp)
+    target_include_directories(blosc2_kakadu_htj2k_backend PRIVATE ${KAKADU_INCLUDE_DIR} ${BLOSC2_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/plugin)
+    target_link_libraries(blosc2_kakadu_htj2k_backend PRIVATE ${KAKADU_CORE_LIBRARY} ${KAKADU_AUX_LIBRARY})
 
     if(UNIX AND NOT APPLE)
         set_target_properties(blosc2_kakadu_j2k_backend blosc2_kakadu_htj2k_backend PROPERTIES
@@ -239,9 +240,9 @@ if(OPENHTJ2K_INCLUDE_DIR AND OPENHTJ2K_LIBRARY)
 endif()
 
 if(OPENHTJ2K_INCLUDE_DIR AND OPENHTJ2K_LIBRARY AND OPENHTJ2K_HAS_PR190_UINT16_API)
-    add_library(blosc2_openhtj2k_backend SHARED plugin/openhtj2k_backend.cpp plugin/htj2k_openhtj2k_plugin.cpp)
-    target_include_directories(blosc2_openhtj2k_backend PRIVATE ${OPENHTJ2K_INCLUDE_DIR} ${BLOSC2_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/plugin)
-    target_link_libraries(blosc2_openhtj2k_backend PRIVATE ${OPENHTJ2K_LIBRARY} ${BLOSC2_LIBRARIES})
+    add_library(blosc2_openhtj2k_backend SHARED b2nd_layout.cpp plugin/openhtj2k_backend.cpp plugin/htj2k_openhtj2k_plugin.cpp)
+    target_include_directories(blosc2_openhtj2k_backend PRIVATE ${OPENHTJ2K_INCLUDE_DIR} ${BLOSC2_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/plugin)
+    target_link_libraries(blosc2_openhtj2k_backend PRIVATE ${OPENHTJ2K_LIBRARY})
 
     if(UNIX AND NOT APPLE)
         set_target_properties(blosc2_openhtj2k_backend PROPERTIES
