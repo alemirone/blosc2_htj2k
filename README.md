@@ -156,7 +156,7 @@ blosc2_htj2k.register_codec()
 blosc2_htj2k.configure(backend="openhtj2k", float_mode="uint16")
 ```
 
-With optional saturation:
+With optional scale guards:
 
 ```python
 blosc2_htj2k.configure(
@@ -166,6 +166,24 @@ blosc2_htj2k.configure(
     float_clamp_max=1.0,
 )
 ```
+
+The clamp values do not force every chunk to use the full
+`[float_clamp_min, float_clamp_max]` range.  They act as guards on the
+per-chunk scale estimation.  For each chunk, the codec first computes the finite
+raw minimum and maximum.  If clamp bounds are configured, the effective scale is
+then limited by those bounds; conceptually:
+
+```text
+scale_min = max(raw_min, float_clamp_min)  # when a lower clamp is set
+scale_max = min(raw_max, float_clamp_max)  # when an upper clamp is set
+```
+
+If the chunk range is already inside the clamp interval, the scale remains free
+inside that interval and is still derived from the chunk data.  Only values that
+fall outside the effective scale are saturated before quantization.  This is
+intended to prevent anomalous values, for example divergent points produced by
+an iterative algorithm, from expanding the quantization scale for the whole
+chunk.
 
 Environment-only configuration, useful for HDF5/C++/service deployments:
 
@@ -186,9 +204,9 @@ For lossless inner JPEG2000 compression, the expected quantization error is:
 max_abs_error <= (scale_max - scale_min) / (2 * qmax) + float32_margin
 ```
 
-where `qmax` is `255`, `65535`, or `4294967295`.  If clamp bounds are set,
-values outside the clamp range saturate to the clamp bounds before
-quantization.  NaN and Inf values fail clearly in this v1 mode; masks are not
+where `qmax` is `255`, `65535`, or `4294967295`, and `scale_min` /
+`scale_max` are the effective per-chunk scale values after the optional clamp
+guards.  NaN and Inf values fail clearly in this v1 mode; masks are not
 preserved.
 
 Hands-on float examples:
