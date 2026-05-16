@@ -1,5 +1,5 @@
 /*********************************************************************
- * blosc2_grok: J2K and HTJ2K codec dispatch paths.
+ * blosc2_htj2k: J2K and HTJ2K codec dispatch paths.
  *
  * Responsibilities:
  * - call the selected family-specific plugin when one is available;
@@ -11,15 +11,15 @@
  * License: GNU Affero General Public License v3.0 (see LICENSE.txt)
  *********************************************************************/
 
-#ifndef BLOSC2_GROK_JPEG2000_CODEC_PATHS_H
-#define BLOSC2_GROK_JPEG2000_CODEC_PATHS_H
+#ifndef BLOSC2_HTJ2K_JPEG2000_CODEC_PATHS_H
+#define BLOSC2_HTJ2K_JPEG2000_CODEC_PATHS_H
 
 #include <cstdint>
 
 #include "htj2k_codec_api.h"
 #include "j2k_codec_api.h"
 
-namespace blosc2_grok_detail {
+namespace blosc2_htj2k_detail {
 
 // Encode regular J2K through a replacement plugin, or through native Grok when
 // no J2K plugin was configured.
@@ -72,6 +72,6 @@ int decode_htj2k_with_plugin(const uint8_t *input,
                              htj2k_codec_plugin_t *plugin,
                              bool debug);
 
-}  // namespace blosc2_grok_detail
+}  // namespace blosc2_htj2k_detail
 
-#endif  // BLOSC2_GROK_JPEG2000_CODEC_PATHS_H
+#endif  // BLOSC2_HTJ2K_JPEG2000_CODEC_PATHS_H

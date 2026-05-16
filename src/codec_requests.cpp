@@ -1,5 +1,5 @@
 /*********************************************************************
- * blosc2_grok: request builders for J2K and HTJ2K replacement backends.
+ * blosc2_htj2k: request builders for J2K and HTJ2K replacement backends.
  *
  * This file owns the translation from Blosc2/Grok call context to the small
  * C request structs used by replacement plugins.  It does not load plugins or
@@ -16,7 +16,7 @@
 
 #include "b2nd_layout.h"
 
-namespace blosc2_grok_detail {
+namespace blosc2_htj2k_detail {
 namespace {
 
 // Extract the image-like layout from b2nd metadata for plugin capability
@@ -139,4 +139,4 @@ htj2k_codec_request_t make_htj2k_decode_request(uint8_t meta,
     return request;
 }
 
-}  // namespace blosc2_grok_detail
+}  // namespace blosc2_htj2k_detail

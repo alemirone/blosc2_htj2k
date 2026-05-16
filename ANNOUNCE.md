@@ -1,15 +1,15 @@
-Announcing blosc2-grok 0.3.5
+Announcing blosc2-htj2k 0.3.5
 ============================
 
 This is a patch release. The only change is a bug fix for incorrectly intepreted row/col dimensions for images.
 
 You can have a look at the release notes in:
 
-https://github.com/Blosc/blosc2_grok/releases
+https://github.com/Blosc/blosc2_htj2k/releases
 
 More info and examples are available in the README:
 
-https://github.com/Blosc/blosc2_grok#readme
+https://github.com/Blosc/blosc2_htj2k#readme
 
 ## What is it?
 
@@ -21,10 +21,10 @@ and decompress images using the JPEG 2000 standard.  For details, check the
 
 The sources and documentation are managed through github services at:
 
-https://github.com/Blosc/blosc2_grok
+https://github.com/Blosc/blosc2_htj2k
 
-blosc2_grok is distributed using the AGPL license, see
-https://github.com/Blosc/blosc2_grok/blob/main/LICENSE.txt
+blosc2_htj2k is distributed using the AGPL license, see
+https://github.com/Blosc/blosc2_htj2k/blob/main/LICENSE.txt
 for details.
 
 

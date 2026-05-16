@@ -1,5 +1,5 @@
 /*********************************************************************
- * blosc2_grok: JPEG2000 codestream-family detection helpers.
+ * blosc2_htj2k: JPEG2000 codestream-family detection helpers.
  *
  * This file owns only lightweight codestream inspection.  It does not know
  * about Blosc2, Grok state or runtime replacement plugins.
@@ -16,7 +16,7 @@
 
 #include "grok.h"
 
-namespace blosc2_grok_detail {
+namespace blosc2_htj2k_detail {
 namespace {
 
 // Read big-endian integer fields from JPEG2000 marker segments and boxes.
@@ -173,4 +173,4 @@ CodecFamily detect_codestream_family(const uint8_t *data, int32_t data_len) {
     return detect_raw_codestream_family(data, data_len);
 }
 
-}  // namespace blosc2_grok_detail
+}  // namespace blosc2_htj2k_detail

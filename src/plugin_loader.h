@@ -1,5 +1,5 @@
 /*********************************************************************
- * blosc2_grok: runtime replacement plugin discovery and loading.
+ * blosc2_htj2k: runtime replacement plugin discovery and loading.
  *
  * Responsibilities:
  * - read the family-specific replacement environment variables;
@@ -13,15 +13,15 @@
  * License: GNU Affero General Public License v3.0 (see LICENSE.txt)
  *********************************************************************/
 
-#ifndef BLOSC2_GROK_PLUGIN_LOADER_H
-#define BLOSC2_GROK_PLUGIN_LOADER_H
+#ifndef BLOSC2_HTJ2K_PLUGIN_LOADER_H
+#define BLOSC2_HTJ2K_PLUGIN_LOADER_H
 
 #include <string>
 
 #include "htj2k_codec_api.h"
 #include "j2k_codec_api.h"
 
-namespace blosc2_grok_detail {
+namespace blosc2_htj2k_detail {
 
 // Load and cache the configured J2K replacement backend, if any.
 j2k_codec_plugin_t *load_j2k_replacement_plugin();
@@ -29,7 +29,7 @@ j2k_codec_plugin_t *load_j2k_replacement_plugin();
 // Load and cache the configured HTJ2K replacement backend, if any.
 htj2k_codec_plugin_t *load_htj2k_replacement_plugin();
 
-// Release all loaded replacement backends.  Called from blosc2_grok_destroy().
+// Release all loaded replacement backends.  Called from blosc2_htj2k_destroy().
 void unload_replacement_plugins();
 
 // Return JSON diagnostics about discovered plugins and their loadability.
@@ -38,6 +38,6 @@ std::string list_plugins_json();
 // Return JSON diagnostics about runtime configuration and discovered plugins.
 std::string diagnose_runtime_json();
 
-}  // namespace blosc2_grok_detail
+}  // namespace blosc2_htj2k_detail
 
-#endif  // BLOSC2_GROK_PLUGIN_LOADER_H
+#endif  // BLOSC2_HTJ2K_PLUGIN_LOADER_H

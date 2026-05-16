@@ -1,6 +1,6 @@
 h5py
 blosc2
-blosc2-grok
+blosc2-htj2k
 hdf5plugin
 scikit-image
 tqdm

@@ -1,5 +1,5 @@
 ##############################################################################
-# blosc2_grok: Grok (JPEG2000 codec) plugin for Blosc2
+# blosc2_htj2k: Grok (JPEG2000 codec) plugin for Blosc2
 #
 # Copyright (c) 2023  The Blosc Development Team <blosc@blosc.org>
 # https://blosc.org
@@ -9,6 +9,6 @@
 from skbuild import setup
 
 setup(
-    name="blosc2_grok",
-    packages=["blosc2_grok"],
+    name="blosc2_htj2k",
+    packages=["blosc2_htj2k"],
 )

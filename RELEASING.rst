@@ -7,7 +7,7 @@ Preliminaries
 - Make sure that ``RELEASE_NOTES.md`` and ``ANNOUNCE.md`` are up to
   date with the latest news in the release.
 
-- Check that *VERSION* symbols in blosc2_grok/__init__.py
+- Check that *VERSION* symbols in blosc2_htj2k/__init__.py
   *and* pyproject.toml contain the correct info.
 
 - Commit the changes with::
@@ -24,7 +24,7 @@ installing the wheel, then test it::
 
   $ python -m pytest
 
-If ``import`` fails to find ``libblosc2_grok.so``, try changing the name of the ``blosc2_grok`` directory to ``blosc2-grok``, run ``pytest``, and then change it back.
+If ``import`` fails to find ``libblosc2_htj2k.so``, try changing the name of the ``blosc2_htj2k`` directory to ``blosc2-htj2k``, run ``pytest``, and then change it back.
 
 Also::
 
@@ -54,7 +54,7 @@ Tagging
 
     $ git push --delete origin vX.Y.Z
 
-- Create a new release visiting https://github.com/Blosc/blosc2_grok/releases/new
+- Create a new release visiting https://github.com/Blosc/blosc2_htj2k/releases/new
   and add the release notes copying them from `RELEASE_NOTES.md` document.
 
 
@@ -76,7 +76,7 @@ Announcing
 Post-release actions
 --------------------
 
-- Edit *VERSION* symbols in blosc2_grok/__init__.py *and* pyproject.toml in main to increment the
+- Edit *VERSION* symbols in blosc2_htj2k/__init__.py *and* pyproject.toml in main to increment the
   version to the next minor one (i.e. X.Y.Z --> X.Y.(Z+1).dev0).
 
 - Create new headers for adding new features in ``RELEASE_NOTES.md``

@@ -1,8 +1,8 @@
 /*********************************************************************
- * Kakadu replacement backend entry point for blosc2_grok.
+ * Kakadu replacement backend entry point for blosc2_htj2k.
  *
  * This file only exports the runtime plugin symbol.  The Kakadu implementation
- * lives in kakadu_backend.cpp so the core blosc2_grok library remains
+ * lives in kakadu_backend.cpp so the core blosc2_htj2k library remains
  * independent from Kakadu headers and libraries.
  *
  * Copyright (c) 2024  The Blosc Development Team <blosc@blosc.org>
@@ -13,7 +13,7 @@
 #include "j2k_codec_api.h"
 
 // The entry-point file is intentionally small: it binds the generic plugin ABI
-// to the Kakadu implementation without exposing Kakadu headers to blosc2_grok.
+// to the Kakadu implementation without exposing Kakadu headers to blosc2_htj2k.
 extern "C" int blosc2_kakadu_j2k_supports(const j2k_codec_request_t *request);
 
 extern "C" int blosc2_kakadu_j2k_encoder(

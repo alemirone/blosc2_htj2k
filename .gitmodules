@@ -1,3 +1,6 @@
 [submodule "src/grok"]
 	path = src/grok
 	url = https://github.com/Blosc/grok-orig-a84ac259.git
+[submodule "src/openhtj2k"]
+	path = src/openhtj2k
+	url = https://github.com/osamu620/OpenHTJ2K.git

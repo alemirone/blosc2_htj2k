@@ -1,5 +1,5 @@
 /*********************************************************************
- * blosc2_grok: local B2ND metalayer reader.
+ * blosc2_htj2k: local B2ND metalayer reader.
  *
  * The B2ND metalayer is a small MsgPack array:
  *   [version, ndim, shape, chunkshape, blockshape, dtype_format, dtype]
@@ -16,7 +16,7 @@
 #include <cstring>
 #include <limits>
 
-namespace blosc2_grok_detail {
+namespace blosc2_htj2k_detail {
 namespace {
 
 class MsgpackReader {
@@ -216,7 +216,7 @@ class MsgpackReader {
 
 bool read_int32_array(MsgpackReader &reader,
                       int8_t expected_size,
-                      std::array<int32_t, BLOSC2_GROK_LAYOUT_MAX_DIM> &values) {
+                      std::array<int32_t, BLOSC2_HTJ2K_LAYOUT_MAX_DIM> &values) {
     uint32_t size = 0;
     if (!reader.read_array_size(size) || size != static_cast<uint32_t>(expected_size)) {
         return false;
@@ -235,7 +235,7 @@ bool read_int32_array(MsgpackReader &reader,
 
 bool read_int64_array(MsgpackReader &reader,
                       int8_t expected_size,
-                      std::array<int64_t, BLOSC2_GROK_LAYOUT_MAX_DIM> &values) {
+                      std::array<int64_t, BLOSC2_HTJ2K_LAYOUT_MAX_DIM> &values) {
     uint32_t size = 0;
     if (!reader.read_array_size(size) || size != static_cast<uint32_t>(expected_size)) {
         return false;
@@ -262,7 +262,7 @@ bool parse_b2nd_meta(const uint8_t *content, int32_t content_len, B2ndLayout &la
     if (!reader.read_integer(version) ||
         !reader.read_integer(ndim) ||
         ndim <= 0 ||
-        ndim > BLOSC2_GROK_LAYOUT_MAX_DIM) {
+        ndim > BLOSC2_HTJ2K_LAYOUT_MAX_DIM) {
         return false;
     }
 
@@ -329,4 +329,4 @@ bool image_layout_from_b2nd(const B2ndLayout &layout,
     return dim_x > 0 && dim_y > 0 && num_comps > 0;
 }
 
-}  // namespace blosc2_grok_detail
+}  // namespace blosc2_htj2k_detail

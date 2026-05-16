@@ -1,5 +1,5 @@
 /*********************************************************************
- * blosc2_grok: OpenHTJ2K backend for HTJ2K replacement compression.
+ * blosc2_htj2k: OpenHTJ2K backend for HTJ2K replacement compression.
  *
  * This backend uses OpenHTJ2K directly through its C++ library API.  It is
  * compiled only when OpenHTJ2K headers and libraries are available.
@@ -38,9 +38,9 @@
 // - blosc2_openhtj2k_encoder(): encode HTJ2K uint8/uint16 gray/RGB chunks.
 // - blosc2_openhtj2k_decoder(): decode codestreams back to Blosc2 interleaved bytes.
 namespace {
-using blosc2_grok_detail::B2ndLayout;
-using blosc2_grok_detail::image_layout_from_b2nd;
-using blosc2_grok_detail::read_b2nd_layout;
+using blosc2_htj2k_detail::B2ndLayout;
+using blosc2_htj2k_detail::image_layout_from_b2nd;
+using blosc2_htj2k_detail::read_b2nd_layout;
 
 constexpr uint8_t OPENHTJ2K_NO_QFACTOR = 0xFF;
 
@@ -139,10 +139,10 @@ extern "C" int blosc2_openhtj2k_encoder(
     const void* /*chunk*/,
     const htj2k_codec_request_t *request
 ) {
-    const bool debug = std::getenv("BLOSC2_GROK_DEBUG") != nullptr;
+    const bool debug = std::getenv("BLOSC2_HTJ2K_DEBUG") != nullptr;
     if (!blosc2_openhtj2k_supports(request)) {
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] OpenHTJ2K encode does not support this HTJ2K request\n");
+            fprintf(stderr, "[blosc2_htj2k] OpenHTJ2K encode does not support this HTJ2K request\n");
         }
         return -1;
     }
@@ -203,7 +203,7 @@ extern "C" int blosc2_openhtj2k_encoder(
     open_htj2k::qcd_params qcd{};
     qcd.number_of_guardbits = 1;
     qcd.is_derived = false;
-    // blosc2_grok uses codec_meta / 10.0 as a target compression ratio.  The
+    // blosc2_htj2k uses codec_meta / 10.0 as a target compression ratio.  The
     // OpenHTJ2K library API exposes quantization controls rather than a byte
     // budget, so this keeps the same monotonic meaning with a conservative
     // quantization step.
@@ -220,7 +220,7 @@ extern "C" int blosc2_openhtj2k_encoder(
         encoder.set_output_buffer(encoded);
         size_t total_size = encoder.invoke();
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] OpenHTJ2K encoded bytes=%zu\n", total_size);
+            fprintf(stderr, "[blosc2_htj2k] OpenHTJ2K encoded bytes=%zu\n", total_size);
         }
         if (total_size > static_cast<size_t>(output_len)) {
             return 0;
@@ -229,7 +229,7 @@ extern "C" int blosc2_openhtj2k_encoder(
         return static_cast<int>(total_size);
     } catch (const std::exception &exc) {
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] OpenHTJ2K encoder exception: %s\n", exc.what());
+            fprintf(stderr, "[blosc2_htj2k] OpenHTJ2K encoder exception: %s\n", exc.what());
         }
         return -1;
     }
@@ -246,7 +246,7 @@ extern "C" int blosc2_openhtj2k_decoder(
     const void * /*chunk*/,
     const htj2k_codec_request_t * /*request*/
 ) {
-    const bool debug = std::getenv("BLOSC2_GROK_DEBUG") != nullptr;
+    const bool debug = std::getenv("BLOSC2_HTJ2K_DEBUG") != nullptr;
     try {
         open_htj2k::openhtj2k_decoder decoder(input, static_cast<size_t>(input_len), 0, 0);
         decoder.parse();
@@ -313,7 +313,7 @@ extern "C" int blosc2_openhtj2k_decoder(
         return static_cast<int>(expected_len);
     } catch (const std::exception &exc) {
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] OpenHTJ2K decoder exception: %s\n", exc.what());
+            fprintf(stderr, "[blosc2_htj2k] OpenHTJ2K decoder exception: %s\n", exc.what());
         }
         return -1;
     }

@@ -1,5 +1,5 @@
 ##############################################################################
-# blosc2_grok: Grok (JPEG2000 codec) plugin for Blosc2
+# blosc2_htj2k: Grok (JPEG2000 codec) plugin for Blosc2
 #
 # Copyright (c) 2023  The Blosc Development Team <blosc@blosc.org>
 # https://blosc.org
@@ -7,7 +7,7 @@
 ##############################################################################
 
 import blosc2
-import blosc2_grok
+import blosc2_htj2k
 import argparse
 import numpy as np
 from PIL import Image
@@ -21,13 +21,13 @@ def compress(im, urlpath=None, **kwargs):
     If the optional argument urlpath is given, the Blosc2 array will be saved to that
     location.
 
-    Other keyword arguments are passed to blosc2_grok.set_params_defaults(...)
+    Other keyword arguments are passed to blosc2_htj2k.set_params_defaults(...)
     """
     # Convert the image to a numpy array
     np_array = np.asarray(im)
 
     # Set the parameters that will be used by the codec
-    blosc2_grok.set_params_defaults(**kwargs)
+    blosc2_htj2k.set_params_defaults(**kwargs)
 
     # Define the compression and decompression parameters. Disable the filters and the
     # splitmode, because these don't work with the codec.

@@ -1,5 +1,5 @@
 /*********************************************************************
- * blosc2_grok: runtime replacement plugin discovery and loading.
+ * blosc2_htj2k: runtime replacement plugin discovery and loading.
  *
  * This file owns dynamic-loader state.  It deliberately does not know how to
  * encode or decode: callers receive a validated family-specific ABI descriptor.
@@ -33,7 +33,7 @@
 #include <dlfcn.h>  // dlopen/dlsym/dlclose for backend shared libraries.
 #endif
 
-namespace blosc2_grok_detail {
+namespace blosc2_htj2k_detail {
 namespace {
 
 namespace fs = std::filesystem;
@@ -107,7 +107,7 @@ plugin_library_handle_t open_plugin_library(const fs::path &libpath,
             *error = loader_error;
         }
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] LoadLibrary failed for %s: %s\n",
+            fprintf(stderr, "[blosc2_htj2k] LoadLibrary failed for %s: %s\n",
                     path.c_str(), loader_error.c_str());
         }
     }
@@ -120,7 +120,7 @@ plugin_library_handle_t open_plugin_library(const fs::path &libpath,
             *error = loader_error ? loader_error : "unknown dlopen error";
         }
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] dlopen failed for %s: %s\n",
+            fprintf(stderr, "[blosc2_htj2k] dlopen failed for %s: %s\n",
                     path.c_str(), loader_error ? loader_error : "unknown dlopen error");
         }
     }
@@ -149,7 +149,7 @@ j2k_codec_plugin_t* find_j2k_plugin_descriptor(plugin_library_handle_t handle,
     if (!symbol) {
         if (debug) {
             std::string path = libpath.string();
-            fprintf(stderr, "[blosc2_grok] GetProcAddress failed for %s: %s\n",
+            fprintf(stderr, "[blosc2_htj2k] GetProcAddress failed for %s: %s\n",
                     path.c_str(), last_windows_loader_error().c_str());
         }
         return nullptr;
@@ -162,7 +162,7 @@ j2k_codec_plugin_t* find_j2k_plugin_descriptor(plugin_library_handle_t handle,
     if (dlsym_error) {
         if (debug) {
             std::string path = libpath.string();
-            fprintf(stderr, "[blosc2_grok] dlsym failed for %s: %s\n", path.c_str(), dlsym_error);
+            fprintf(stderr, "[blosc2_htj2k] dlsym failed for %s: %s\n", path.c_str(), dlsym_error);
         }
         return nullptr;
     }
@@ -179,7 +179,7 @@ htj2k_codec_plugin_t* find_htj2k_plugin_descriptor(plugin_library_handle_t handl
     if (!symbol) {
         if (debug) {
             std::string path = libpath.string();
-            fprintf(stderr, "[blosc2_grok] GetProcAddress failed for %s: %s\n",
+            fprintf(stderr, "[blosc2_htj2k] GetProcAddress failed for %s: %s\n",
                     path.c_str(), last_windows_loader_error().c_str());
         }
         return nullptr;
@@ -192,7 +192,7 @@ htj2k_codec_plugin_t* find_htj2k_plugin_descriptor(plugin_library_handle_t handl
     if (dlsym_error) {
         if (debug) {
             std::string path = libpath.string();
-            fprintf(stderr, "[blosc2_grok] dlsym failed for %s: %s\n", path.c_str(), dlsym_error);
+            fprintf(stderr, "[blosc2_htj2k] dlsym failed for %s: %s\n", path.c_str(), dlsym_error);
         }
         return nullptr;
     }
@@ -207,14 +207,14 @@ bool is_valid_j2k_plugin_descriptor(const j2k_codec_plugin_t *plugin,
     std::string path = libpath.string();
     if (!plugin) {
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] Missing J2K plugin descriptor in %s\n", path.c_str());
+            fprintf(stderr, "[blosc2_htj2k] Missing J2K plugin descriptor in %s\n", path.c_str());
         }
         return false;
     }
     if (plugin->abi_version != J2K_CODEC_PLUGIN_ABI_VERSION) {
         if (debug) {
             fprintf(stderr,
-                    "[blosc2_grok] J2K plugin ABI mismatch in %s: got %u, expected %u\n",
+                    "[blosc2_htj2k] J2K plugin ABI mismatch in %s: got %u, expected %u\n",
                     path.c_str(), plugin->abi_version, J2K_CODEC_PLUGIN_ABI_VERSION);
         }
         return false;
@@ -222,7 +222,7 @@ bool is_valid_j2k_plugin_descriptor(const j2k_codec_plugin_t *plugin,
     if (plugin->struct_size < sizeof(j2k_codec_plugin_t)) {
         if (debug) {
             fprintf(stderr,
-                    "[blosc2_grok] Plugin descriptor too small in %s: got %u, expected at least %zu\n",
+                    "[blosc2_htj2k] Plugin descriptor too small in %s: got %u, expected at least %zu\n",
                     path.c_str(), plugin->struct_size, sizeof(j2k_codec_plugin_t));
         }
         return false;
@@ -230,7 +230,7 @@ bool is_valid_j2k_plugin_descriptor(const j2k_codec_plugin_t *plugin,
     if (!plugin->name || !plugin->version || !plugin->vtable.supports ||
         !plugin->vtable.encode || !plugin->vtable.decode) {
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] Incomplete J2K plugin descriptor in %s\n", path.c_str());
+            fprintf(stderr, "[blosc2_htj2k] Incomplete J2K plugin descriptor in %s\n", path.c_str());
         }
         return false;
     }
@@ -244,14 +244,14 @@ bool is_valid_htj2k_plugin_descriptor(const htj2k_codec_plugin_t *plugin,
     std::string path = libpath.string();
     if (!plugin) {
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] Missing HTJ2K plugin descriptor in %s\n", path.c_str());
+            fprintf(stderr, "[blosc2_htj2k] Missing HTJ2K plugin descriptor in %s\n", path.c_str());
         }
         return false;
     }
     if (plugin->abi_version != HTJ2K_CODEC_PLUGIN_ABI_VERSION) {
         if (debug) {
             fprintf(stderr,
-                    "[blosc2_grok] HTJ2K plugin ABI mismatch in %s: got %u, expected %u\n",
+                    "[blosc2_htj2k] HTJ2K plugin ABI mismatch in %s: got %u, expected %u\n",
                     path.c_str(), plugin->abi_version, HTJ2K_CODEC_PLUGIN_ABI_VERSION);
         }
         return false;
@@ -259,7 +259,7 @@ bool is_valid_htj2k_plugin_descriptor(const htj2k_codec_plugin_t *plugin,
     if (plugin->struct_size < sizeof(htj2k_codec_plugin_t)) {
         if (debug) {
             fprintf(stderr,
-                    "[blosc2_grok] HTJ2K plugin descriptor too small in %s: got %u, expected at least %zu\n",
+                    "[blosc2_htj2k] HTJ2K plugin descriptor too small in %s: got %u, expected at least %zu\n",
                     path.c_str(), plugin->struct_size, sizeof(htj2k_codec_plugin_t));
         }
         return false;
@@ -267,7 +267,7 @@ bool is_valid_htj2k_plugin_descriptor(const htj2k_codec_plugin_t *plugin,
     if (!plugin->name || !plugin->version || !plugin->vtable.supports ||
         !plugin->vtable.encode || !plugin->vtable.decode) {
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] Incomplete HTJ2K plugin descriptor in %s\n", path.c_str());
+            fprintf(stderr, "[blosc2_htj2k] Incomplete HTJ2K plugin descriptor in %s\n", path.c_str());
         }
         return false;
     }
@@ -448,11 +448,11 @@ j2k_codec_plugin_t* load_j2k_replacement_plugin() {
         return nullptr;
     }
 
-    bool debug = (getenv("BLOSC2_GROK_DEBUG") != nullptr);
+    bool debug = (getenv("BLOSC2_HTJ2K_DEBUG") != nullptr);
     for (const PluginCandidate &candidate : candidates) {
         if (candidate.native) {
             if (debug) {
-                fprintf(stderr, "[blosc2_grok] Using native J2K backend\n");
+                fprintf(stderr, "[blosc2_htj2k] Using native J2K backend\n");
             }
             return nullptr;
         }
@@ -468,7 +468,7 @@ j2k_codec_plugin_t* load_j2k_replacement_plugin() {
                 s_j2k_replacement_plugin = plugin;
                 if (debug) {
                     std::string path = libpath.string();
-                    fprintf(stderr, "[blosc2_grok] Loaded J2K plugin: %s %s from %s\n",
+                    fprintf(stderr, "[blosc2_htj2k] Loaded J2K plugin: %s %s from %s\n",
                             plugin->name, plugin->version, path.c_str());
                 }
                 return plugin;
@@ -479,7 +479,7 @@ j2k_codec_plugin_t* load_j2k_replacement_plugin() {
     }
 
     if (debug) {
-        fprintf(stderr, "[blosc2_grok] No valid J2K plugin found in configured candidates\n");
+        fprintf(stderr, "[blosc2_htj2k] No valid J2K plugin found in configured candidates\n");
     }
     return nullptr;
 }
@@ -495,7 +495,7 @@ htj2k_codec_plugin_t* load_htj2k_replacement_plugin() {
         return nullptr;
     }
 
-    bool debug = (getenv("BLOSC2_GROK_DEBUG") != nullptr);
+    bool debug = (getenv("BLOSC2_HTJ2K_DEBUG") != nullptr);
     for (const PluginCandidate &candidate : candidates) {
         for (const fs::path &libpath : candidate_library_paths(candidate)) {
             plugin_library_handle_t handle = open_plugin_library(libpath, debug);
@@ -509,7 +509,7 @@ htj2k_codec_plugin_t* load_htj2k_replacement_plugin() {
                 s_htj2k_replacement_plugin = plugin;
                 if (debug) {
                     std::string path = libpath.string();
-                    fprintf(stderr, "[blosc2_grok] Loaded HTJ2K plugin: %s %s from %s\n",
+                    fprintf(stderr, "[blosc2_htj2k] Loaded HTJ2K plugin: %s %s from %s\n",
                             plugin->name, plugin->version, path.c_str());
                 }
                 return plugin;
@@ -520,7 +520,7 @@ htj2k_codec_plugin_t* load_htj2k_replacement_plugin() {
     }
 
     if (debug) {
-        fprintf(stderr, "[blosc2_grok] No valid HTJ2K plugin found in configured candidates\n");
+        fprintf(stderr, "[blosc2_htj2k] No valid HTJ2K plugin found in configured candidates\n");
     }
     return nullptr;
 }
@@ -540,7 +540,7 @@ void unload_replacement_plugins() {
 }
 
 std::string list_plugins_json() {
-    bool debug = (getenv("BLOSC2_GROK_DEBUG") != nullptr);
+    bool debug = (getenv("BLOSC2_HTJ2K_DEBUG") != nullptr);
     std::vector<PluginProbeResult> results;
     for (const PluginCandidate &candidate : plugin_inventory_candidates()) {
         results.push_back(probe_candidate(candidate, debug));
@@ -571,4 +571,4 @@ std::string diagnose_runtime_json() {
     return "{\"runtime\":" + runtime_json + ",\"plugins\":" + plugins_json + "}";
 }
 
-}  // namespace blosc2_grok_detail
+}  // namespace blosc2_htj2k_detail

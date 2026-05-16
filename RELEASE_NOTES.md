@@ -9,14 +9,17 @@
   available locally.
 * Add an optional OpenHTJ2K HTJ2K backend when the PR #190-style `uint16` API
   is detected by CMake.
+* Build OpenHTJ2K PR190 automatically during `pip install .` when no
+  OpenHTJ2K installation is configured, and bundle its runtime library next to
+  the HTJ2K backend plugin.
 * Add explicit runtime configuration APIs:
-  `blosc2_grok.configure()` for Python and `blosc2_grok_configure()` for C.
+  `blosc2_htj2k.configure()` for Python and `blosc2_htj2k_configure()` for C.
 * Add plugin listing, diagnostics and self-test helpers:
   `list_plugins()`, `available_backends()`, `diagnose()`, `selftest()` and
-  the corresponding `python -m blosc2_grok` commands.
+  the corresponding `python -m blosc2_htj2k` commands.
 * Preserve legacy environment variables for backend selection while adding
-  named backend variables through `BLOSC2_GROK_PLUGIN_PATH`,
-  `BLOSC2_GROK_J2K_BACKEND` and `BLOSC2_GROK_HTJ2K_BACKEND`.
+  named backend variables through `BLOSC2_HTJ2K_PLUGIN_PATH`,
+  `BLOSC2_HTJ2K_J2K_BACKEND` and `BLOSC2_HTJ2K_HTJ2K_BACKEND`.
 * Improve HDF5 deployment guidance for explicit loading and `LD_PRELOAD`
   fallback use cases.
 * Keep Kakadu and OpenHTJ2K out of the core codec library; optional backends
@@ -66,12 +69,12 @@
 
 * Changed initialization of the grok library
   to first time it is used. This evicts having to import
-  the `blosc2-grok` package to use the plugin.
+  the `blosc2-htj2k` package to use the plugin.
 
 
 ## Changes from 0.2.0 to 0.2.1
 
-* Avoid calling `set_params_defaults` for setting own blosc2_grok defaults.
+* Avoid calling `set_params_defaults` for setting own blosc2_htj2k defaults.
 
 
 ## Changes from 0.1.0 to 0.2.0

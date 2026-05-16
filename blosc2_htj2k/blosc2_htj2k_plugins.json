@@ -2,7 +2,6 @@
   "version": 1,
   "plugin_path": "plugins",
   "priority": {
-    "j2k": ["kakadu", "native", "grok"],
     "htj2k": ["kakadu", "openhtj2k"]
   }
 }

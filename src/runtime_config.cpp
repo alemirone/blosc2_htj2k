@@ -1,5 +1,5 @@
 /*********************************************************************
- * blosc2_grok: runtime configuration and plugin candidate discovery.
+ * blosc2_htj2k: runtime configuration and plugin candidate discovery.
  *
  * Copyright (c) 2026  The Blosc Development Team <blosc@blosc.org>
  * https://blosc.org
@@ -26,7 +26,7 @@
 #include <dlfcn.h>
 #endif
 
-namespace blosc2_grok_detail {
+namespace blosc2_htj2k_detail {
 namespace {
 
 namespace fs = std::filesystem;
@@ -99,13 +99,13 @@ std::string family_dir_name(PluginFamily family) {
 }
 
 std::string legacy_env_name(PluginFamily family) {
-    return family == PluginFamily::J2K ? "BLOSC2_GROK_REPLACEMENT_DIR"
-                                       : "BLOSC2_GROK_HTJ2K_REPLACEMENT_DIR";
+    return family == PluginFamily::HTJ2K ? "BLOSC2_HTJ2K_REPLACEMENT_DIR"
+                                         : "";
 }
 
 std::string named_backend_env_name(PluginFamily family) {
-    return family == PluginFamily::J2K ? "BLOSC2_GROK_J2K_BACKEND"
-                                       : "BLOSC2_GROK_HTJ2K_BACKEND";
+    return family == PluginFamily::HTJ2K ? "BLOSC2_HTJ2K_BACKEND"
+                                         : "";
 }
 
 std::string configured_backend_locked(PluginFamily family, const RuntimeConfig &config) {
@@ -122,7 +122,7 @@ std::string configured_plugin_path_without_manifest_locked(const RuntimeConfig &
     if (config.explicit_api && !config.plugin_path.empty()) {
         return config.plugin_path;
     }
-    return env_string("BLOSC2_GROK_PLUGIN_PATH");
+    return env_string("BLOSC2_HTJ2K_PLUGIN_PATH");
 }
 
 fs::path self_library_path() {
@@ -157,7 +157,7 @@ fs::path default_plugin_root() {
 }
 
 fs::path manifest_path() {
-    return self_library_dir() / "blosc2_grok_plugins.json";
+    return self_library_dir() / "blosc2_htj2k_plugins.json";
 }
 
 void skip_json_ws(const std::string &text, size_t &pos) {
@@ -381,7 +381,7 @@ PluginCandidate make_candidate(PluginFamily family,
 
 std::vector<std::string> auto_backend_names(PluginFamily family) {
     if (family == PluginFamily::J2K) {
-        return {"kakadu", "grok"};
+        return {};
     }
     return {"kakadu", "openhtj2k"};
 }
@@ -546,7 +546,7 @@ int configure_runtime(const char *plugin_path,
     std::lock_guard<std::mutex> lock(runtime_config_mutex());
     RuntimeConfig &config = runtime_config();
     if (config.frozen) {
-        config.last_error = "blosc2_grok runtime is already in use; configure before first encode/decode";
+        config.last_error = "blosc2_htj2k runtime is already in use; configure before first encode/decode";
         return -1;
     }
 
@@ -600,8 +600,8 @@ std::vector<PluginCandidate> plugin_load_candidates(PluginFamily family) {
         return priority_candidates_locked(family, config, manifest_priority, true);
     }
 
-    if (family == PluginFamily::J2K) {
-        return {native_j2k_candidate(true)};
+    if (family == PluginFamily::HTJ2K) {
+        return priority_candidates_locked(family, config, auto_backend_names(family), true);
     }
     return {};
 }
@@ -615,9 +615,7 @@ std::vector<PluginCandidate> plugin_inventory_candidates() {
         append_unique_candidate(candidates, candidate);
     };
 
-    add_candidate(native_j2k_candidate(false));
-
-    for (PluginFamily family : {PluginFamily::J2K, PluginFamily::HTJ2K}) {
+    for (PluginFamily family : {PluginFamily::HTJ2K}) {
         std::string legacy_dir = env_string(legacy_env_name(family).c_str());
         if (!legacy_dir.empty()) {
             add_candidate(make_candidate(family, basename_or_unknown(legacy_dir),
@@ -636,7 +634,7 @@ std::vector<PluginCandidate> plugin_inventory_candidates() {
     }
 
     for (const fs::path &root : plugin_roots_locked(config)) {
-        for (PluginFamily family : {PluginFamily::J2K, PluginFamily::HTJ2K}) {
+        for (PluginFamily family : {PluginFamily::HTJ2K}) {
             fs::path family_root = root / family_dir_name(family);
             std::error_code ec;
             if (!fs::is_directory(family_root, ec)) {
@@ -675,19 +673,10 @@ std::string runtime_diagnostics_json() {
     append_json_string_field(out, "manifest_error", manifest.error);
     append_json_string_field(out, "manifest_plugin_path", manifest.plugin_path);
     append_json_string_field(out, "plugin_path", configured_plugin_path_locked(config));
-    append_json_string_field(out, "j2k_backend", configured_backend_locked(PluginFamily::J2K, config));
-    append_json_string_field(out, "htj2k_backend", configured_backend_locked(PluginFamily::HTJ2K, config));
-    append_json_string_field(out, "legacy_j2k_dir", env_string("BLOSC2_GROK_REPLACEMENT_DIR"));
-    append_json_string_field(out, "legacy_htj2k_dir", env_string("BLOSC2_GROK_HTJ2K_REPLACEMENT_DIR"));
+    append_json_string_field(out, "backend", configured_backend_locked(PluginFamily::HTJ2K, config));
+    append_json_string_field(out, "legacy_htj2k_dir", env_string("BLOSC2_HTJ2K_REPLACEMENT_DIR"));
     append_json_string_field(out, "last_error", config.last_error);
-    out << "\"manifest_priority\":{\"j2k\":[";
-    for (size_t i = 0; i < manifest.j2k_priority.size(); ++i) {
-        if (i != 0) {
-            out << ",";
-        }
-        out << "\"" << json_escape(manifest.j2k_priority[i]) << "\"";
-    }
-    out << "],\"htj2k\":[";
+    out << "\"manifest_priority\":{\"htj2k\":[";
     for (size_t i = 0; i < manifest.htj2k_priority.size(); ++i) {
         if (i != 0) {
             out << ",";
@@ -705,13 +694,11 @@ std::string runtime_diagnostics_json() {
     }
     out << "]";
     out << ",\"env\":{";
-    append_env_json_field(out, "BLOSC2_GROK_PLUGIN_PATH");
-    append_env_json_field(out, "BLOSC2_GROK_J2K_BACKEND");
-    append_env_json_field(out, "BLOSC2_GROK_HTJ2K_BACKEND");
-    append_env_json_field(out, "BLOSC2_GROK_REPLACEMENT_DIR");
-    append_env_json_field(out, "BLOSC2_GROK_HTJ2K_REPLACEMENT_DIR");
-    append_env_json_field(out, "BLOSC2_GROK_LIBRARY");
-    append_env_json_field(out, "BLOSC2_GROK_DEBUG");
+    append_env_json_field(out, "BLOSC2_HTJ2K_PLUGIN_PATH");
+    append_env_json_field(out, "BLOSC2_HTJ2K_BACKEND");
+    append_env_json_field(out, "BLOSC2_HTJ2K_REPLACEMENT_DIR");
+    append_env_json_field(out, "BLOSC2_HTJ2K_LIBRARY");
+    append_env_json_field(out, "BLOSC2_HTJ2K_DEBUG");
     append_env_json_field(out, "HDF5_PLUGIN_PATH");
     append_env_json_field(out, "LD_LIBRARY_PATH");
     append_env_json_field(out, "DYLD_LIBRARY_PATH");
@@ -721,4 +708,4 @@ std::string runtime_diagnostics_json() {
     return out.str();
 }
 
-}  // namespace blosc2_grok_detail
+}  // namespace blosc2_htj2k_detail

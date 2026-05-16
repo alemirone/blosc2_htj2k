@@ -1,8 +1,8 @@
 /*********************************************************************
- * OpenHTJ2K HTJ2K replacement backend entry point for blosc2_grok.
+ * OpenHTJ2K HTJ2K replacement backend entry point for blosc2_htj2k.
  *
  * This file only exports the HTJ2K runtime plugin symbol.  The implementation
- * lives in openhtj2k_backend.cpp so the core blosc2_grok library remains
+ * lives in openhtj2k_backend.cpp so the core blosc2_htj2k library remains
  * independent from OpenHTJ2K headers and libraries.
  *
  * Copyright (c) 2026  Alessandro Mirone
@@ -13,7 +13,7 @@
 
 // The entry-point file is intentionally small: it binds the HTJ2K plugin ABI
 // to the OpenHTJ2K implementation without exposing OpenHTJ2K headers to
-// blosc2_grok.
+// blosc2_htj2k.
 extern "C" int blosc2_openhtj2k_supports(const htj2k_codec_request_t *request);
 
 extern "C" int blosc2_openhtj2k_encoder(

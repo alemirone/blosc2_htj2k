@@ -1,5 +1,5 @@
 /*********************************************************************
- * blosc2_grok: J2K and HTJ2K codec dispatch paths.
+ * blosc2_htj2k: J2K and HTJ2K codec dispatch paths.
  *
  * This file receives already-built requests and already-discovered plugins.  It
  * does not read environment variables or open shared libraries.
@@ -13,7 +13,7 @@
 
 #include <cstdio>
 
-extern "C" int blosc2_grok_native_encoder(const uint8_t *input,
+extern "C" int blosc2_htj2k_native_encoder(const uint8_t *input,
                                            int32_t input_len,
                                            uint8_t *output,
                                            int32_t output_len,
@@ -21,7 +21,7 @@ extern "C" int blosc2_grok_native_encoder(const uint8_t *input,
                                            blosc2_cparams *cparams,
                                            const void *chunk);
 
-extern "C" int blosc2_grok_native_decoder(const uint8_t *input,
+extern "C" int blosc2_htj2k_native_decoder(const uint8_t *input,
                                            int32_t input_len,
                                            uint8_t *output,
                                            int32_t output_len,
@@ -29,7 +29,7 @@ extern "C" int blosc2_grok_native_decoder(const uint8_t *input,
                                            blosc2_dparams *dparams,
                                            const void *chunk);
 
-namespace blosc2_grok_detail {
+namespace blosc2_htj2k_detail {
 
 int encode_j2k_with_plugin_or_native(const uint8_t *input,
                                      int32_t input_len,
@@ -44,18 +44,18 @@ int encode_j2k_with_plugin_or_native(const uint8_t *input,
     if (plugin) {
         if (!plugin->vtable.supports(&request)) {
             fprintf(stderr,
-                    "[blosc2_grok] J2K plugin %s does not support requested layout "
+                    "[blosc2_htj2k] J2K plugin %s does not support requested layout "
                     "(precision=%u components=%u)\n",
                     plugin->name, request.precision_bits, request.num_components);
             return -1;
         }
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] Using J2K plugin: %s %s\n", plugin->name, plugin->version);
+            fprintf(stderr, "[blosc2_htj2k] Using J2K plugin: %s %s\n", plugin->name, plugin->version);
         }
         return plugin->vtable.encode(input, input_len, output, output_len, meta, cparams, chunk, &request);
     }
 
-    return blosc2_grok_native_encoder(input, input_len, output, output_len, meta, cparams, chunk);
+    return blosc2_htj2k_native_encoder(input, input_len, output, output_len, meta, cparams, chunk);
 }
 
 int encode_htj2k_with_plugin(const uint8_t *input,
@@ -70,20 +70,20 @@ int encode_htj2k_with_plugin(const uint8_t *input,
                              bool debug) {
     if (!plugin) {
         fprintf(stderr,
-                "[blosc2_grok] HTJ2K encoding requires an HTJ2K backend; configure "
-                "BLOSC2_GROK_HTJ2K_BACKEND (BLOSC2_GROK_PLUGIN_PATH is optional "
-                "for default installs), or set legacy BLOSC2_GROK_HTJ2K_REPLACEMENT_DIR\n");
+                "[blosc2_htj2k] HTJ2K encoding requires an HTJ2K backend; configure "
+                "BLOSC2_HTJ2K_BACKEND (BLOSC2_HTJ2K_PLUGIN_PATH is optional "
+                "for default installs), or set legacy BLOSC2_HTJ2K_REPLACEMENT_DIR\n");
         return -1;
     }
     if (!plugin->vtable.supports(&request)) {
         fprintf(stderr,
-                "[blosc2_grok] HTJ2K plugin %s does not support requested layout "
+                "[blosc2_htj2k] HTJ2K plugin %s does not support requested layout "
                 "(precision=%u components=%u)\n",
                 plugin->name, request.precision_bits, request.num_components);
         return -1;
     }
     if (debug) {
-        fprintf(stderr, "[blosc2_grok] Using HTJ2K plugin: %s %s\n", plugin->name, plugin->version);
+        fprintf(stderr, "[blosc2_htj2k] Using HTJ2K plugin: %s %s\n", plugin->name, plugin->version);
     }
     return plugin->vtable.encode(input, input_len, output, output_len, meta, cparams, chunk, &request);
 }
@@ -100,18 +100,18 @@ int decode_j2k_with_plugin_or_native(const uint8_t *input,
                                      bool debug) {
     if (plugin) {
         if (!plugin->vtable.supports(&request)) {
-            fprintf(stderr, "[blosc2_grok] J2K plugin %s does not support this decode request\n",
+            fprintf(stderr, "[blosc2_htj2k] J2K plugin %s does not support this decode request\n",
                     plugin->name);
             return -1;
         }
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] Using J2K plugin decoder: %s %s\n",
+            fprintf(stderr, "[blosc2_htj2k] Using J2K plugin decoder: %s %s\n",
                     plugin->name, plugin->version);
         }
         return plugin->vtable.decode(input, input_len, output, output_len, meta, dparams, chunk, &request);
     }
 
-    return blosc2_grok_native_decoder(input, input_len, output, output_len, meta, dparams, chunk);
+    return blosc2_htj2k_native_decoder(input, input_len, output, output_len, meta, dparams, chunk);
 }
 
 int decode_htj2k_with_plugin(const uint8_t *input,
@@ -126,21 +126,21 @@ int decode_htj2k_with_plugin(const uint8_t *input,
                              bool debug) {
     if (!plugin) {
         fprintf(stderr,
-                "[blosc2_grok] HTJ2K decoding requires an HTJ2K backend; configure "
-                "BLOSC2_GROK_HTJ2K_BACKEND (BLOSC2_GROK_PLUGIN_PATH is optional "
-                "for default installs), or set legacy BLOSC2_GROK_HTJ2K_REPLACEMENT_DIR\n");
+                "[blosc2_htj2k] HTJ2K decoding requires an HTJ2K backend; configure "
+                "BLOSC2_HTJ2K_BACKEND (BLOSC2_HTJ2K_PLUGIN_PATH is optional "
+                "for default installs), or set legacy BLOSC2_HTJ2K_REPLACEMENT_DIR\n");
         return -1;
     }
     if (!plugin->vtable.supports(&request)) {
-        fprintf(stderr, "[blosc2_grok] HTJ2K plugin %s does not support this decode request\n",
+        fprintf(stderr, "[blosc2_htj2k] HTJ2K plugin %s does not support this decode request\n",
                 plugin->name);
         return -1;
     }
     if (debug) {
-        fprintf(stderr, "[blosc2_grok] Using HTJ2K plugin decoder: %s %s\n",
+        fprintf(stderr, "[blosc2_htj2k] Using HTJ2K plugin decoder: %s %s\n",
                 plugin->name, plugin->version);
     }
     return plugin->vtable.decode(input, input_len, output, output_len, meta, dparams, chunk, &request);
 }
 
-}  // namespace blosc2_grok_detail
+}  // namespace blosc2_htj2k_detail

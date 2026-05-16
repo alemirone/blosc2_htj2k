@@ -1,5 +1,5 @@
 /*********************************************************************
- * blosc2_grok: request builders for J2K and HTJ2K replacement backends.
+ * blosc2_htj2k: request builders for J2K and HTJ2K replacement backends.
  *
  * Responsibilities:
  * - detect HTJ2K intent from Grok-compatible compression parameters;
@@ -11,16 +11,16 @@
  * License: GNU Affero General Public License v3.0 (see LICENSE.txt)
  *********************************************************************/
 
-#ifndef BLOSC2_GROK_CODEC_REQUESTS_H
-#define BLOSC2_GROK_CODEC_REQUESTS_H
+#ifndef BLOSC2_HTJ2K_CODEC_REQUESTS_H
+#define BLOSC2_HTJ2K_CODEC_REQUESTS_H
 
 #include <cstdint>
 
-#include "blosc2_grok.h"
+#include "blosc2_htj2k.h"
 #include "htj2k_codec_api.h"
 #include "j2k_codec_api.h"
 
-namespace blosc2_grok_detail {
+namespace blosc2_htj2k_detail {
 
 // Return whether Grok-compatible compression parameters request HTJ2K block
 // coding.  Backend details remain in family-specific plugins.
@@ -48,6 +48,6 @@ htj2k_codec_request_t make_htj2k_decode_request(uint8_t meta,
                                                 blosc2_dparams *dparams,
                                                 const void *chunk);
 
-}  // namespace blosc2_grok_detail
+}  // namespace blosc2_htj2k_detail
 
-#endif  // BLOSC2_GROK_CODEC_REQUESTS_H
+#endif  // BLOSC2_HTJ2K_CODEC_REQUESTS_H

@@ -1,5 +1,5 @@
 /*********************************************************************
- * blosc2_grok: runtime configuration and plugin candidate discovery.
+ * blosc2_htj2k: runtime configuration and plugin candidate discovery.
  *
  * This layer owns user-facing policy: explicit API configuration, legacy
  * environment variables, named backend environment variables and defaults.
@@ -10,14 +10,14 @@
  * License: GNU Affero General Public License v3.0 (see LICENSE.txt)
  *********************************************************************/
 
-#ifndef BLOSC2_GROK_RUNTIME_CONFIG_H
-#define BLOSC2_GROK_RUNTIME_CONFIG_H
+#ifndef BLOSC2_HTJ2K_RUNTIME_CONFIG_H
+#define BLOSC2_HTJ2K_RUNTIME_CONFIG_H
 
 #include <filesystem>
 #include <string>
 #include <vector>
 
-namespace blosc2_grok_detail {
+namespace blosc2_htj2k_detail {
 
 enum class PluginFamily {
     J2K,
@@ -54,6 +54,6 @@ std::string family_name(PluginFamily family);
 
 std::string json_escape(const std::string &value);
 
-}  // namespace blosc2_grok_detail
+}  // namespace blosc2_htj2k_detail
 
-#endif  // BLOSC2_GROK_RUNTIME_CONFIG_H
+#endif  // BLOSC2_HTJ2K_RUNTIME_CONFIG_H

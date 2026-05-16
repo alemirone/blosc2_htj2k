@@ -1,5 +1,5 @@
 ##############################################################################
-# blosc2_grok: Grok (JPEG2000 codec) plugin for Blosc2
+# blosc2_htj2k: Grok (JPEG2000 codec) plugin for Blosc2
 #
 # Copyright (c) 2023  The Blosc Development Team <blosc@blosc.org>
 # https://blosc.org
@@ -14,7 +14,7 @@ Data can be downloaded from: http://www.silx.org/pub/nabu/data/compression/lung_
 
 import h5py
 import blosc2
-import blosc2_grok
+import blosc2_htj2k
 import numpy as np
 import hdf5plugin
 from skimage.metrics import structural_similarity as ssim
@@ -44,12 +44,12 @@ if __name__ == '__main__':
         print(f"Compressing with cratio={cratio}x ...")
         # Set the parameters that will be used by grok
         kwargs = {
-            'cod_format': blosc2_grok.GrkFileFmt.GRK_FMT_JP2,
+            'cod_format': blosc2_htj2k.GrkFileFmt.GRK_FMT_JP2,
             'num_threads': 1,    # this does not have any effect (grok should work in multithreading mode)
             'quality_mode': "rates",
             'quality_layers': np.array([cratio], dtype=np.float64)
         }
-        blosc2_grok.set_params_defaults(**kwargs)
+        blosc2_htj2k.set_params_defaults(**kwargs)
 
         # Open the output file
         fout = h5py.File(f'/Users/faltet/Downloads/lung_jpeg2k_2000-2100-{cratio}x.h5', 'w')

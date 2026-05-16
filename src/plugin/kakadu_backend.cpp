@@ -1,5 +1,5 @@
 /*********************************************************************
- * blosc2_grok: Kakadu (JPEG2000 codec) backend for Blosc2
+ * blosc2_htj2k: Kakadu (JPEG2000 codec) backend for Blosc2
  *
  * Copyright (c) 2023  The Blosc Development Team <blosc@blosc.org>
  * https://blosc.org
@@ -38,9 +38,9 @@
 
 using namespace kdu_core;
 using namespace kdu_supp;
-using blosc2_grok_detail::B2ndLayout;
-using blosc2_grok_detail::image_layout_from_b2nd;
-using blosc2_grok_detail::read_b2nd_layout;
+using blosc2_htj2k_detail::B2ndLayout;
+using blosc2_htj2k_detail::image_layout_from_b2nd;
+using blosc2_htj2k_detail::read_b2nd_layout;
 
 // Function responsibility map:
 //
@@ -74,7 +74,7 @@ class KduErrorHandler : public kdu_message {
     void flush(bool end_of_message) override {
         if (end_of_message) {
             if (debug) {
-                fprintf(stderr, "[blosc2_grok] Kakadu error: %s\n", buffer.c_str());
+                fprintf(stderr, "[blosc2_htj2k] Kakadu error: %s\n", buffer.c_str());
             }
             buffer.clear();
             throw KDU_ERROR_EXCEPTION;
@@ -97,7 +97,7 @@ class KduWarningHandler : public kdu_message {
     void flush(bool end_of_message) override {
         if (end_of_message) {
             if (debug) {
-                fprintf(stderr, "[blosc2_grok] Kakadu warning: %s\n", buffer.c_str());
+                fprintf(stderr, "[blosc2_htj2k] Kakadu warning: %s\n", buffer.c_str());
             }
             buffer.clear();
         }
@@ -173,7 +173,7 @@ bool set_siz_params(siz_params &siz, int64_t width, int64_t height,
 
 // Return whether user-provided Kakadu overrides already mention a parameter.
 bool kakadu_extra_has_param(const char *param) {
-    const char *extra = std::getenv("BLOSC2_GROK_KAKADU_PARAMS");
+    const char *extra = std::getenv("BLOSC2_HTJ2K_KAKADU_PARAMS");
     if (extra == nullptr || *extra == '\0' || param == nullptr || *param == '\0') {
         return false;
     }
@@ -190,7 +190,7 @@ bool kakadu_extra_has_param(const char *param) {
 
 // Set the codestream family: regular JPEG2000 or Part-15 HTJ2K.
 void apply_kakadu_mode(siz_params &siz, bool htj2k) {
-    const bool debug = std::getenv("BLOSC2_GROK_DEBUG") != nullptr;
+    const bool debug = std::getenv("BLOSC2_HTJ2K_DEBUG") != nullptr;
 
     // Apply coding mode. (We ensure canvas/tile coordinates are set explicitly
     // in `set_siz_params`, so Kakadu can safely copy SIZ parameters when other
@@ -203,17 +203,17 @@ void apply_kakadu_mode(siz_params &siz, bool htj2k) {
         siz.parse_string("Cmodes=0");
     }
     if (debug) {
-        fprintf(stderr, "[blosc2_grok] Kakadu mode: %s\n", htj2k ? "HTJ2K" : "J2K");
+        fprintf(stderr, "[blosc2_htj2k] Kakadu mode: %s\n", htj2k ? "HTJ2K" : "J2K");
     }
 }
 
 // Apply optional caller-provided Kakadu parameter strings and Clevels tuning.
 void apply_kakadu_overrides(siz_params &siz) {
-    const bool debug = std::getenv("BLOSC2_GROK_DEBUG") != nullptr;
+    const bool debug = std::getenv("BLOSC2_HTJ2K_DEBUG") != nullptr;
     // Optional: apply extra Kakadu parameter strings (semicolon/newline separated).
     // This is intentionally low-level to allow matching external encoders (e.g., MATLAB)
     // without constantly adding new env vars.
-    const char *extra = std::getenv("BLOSC2_GROK_KAKADU_PARAMS");
+    const char *extra = std::getenv("BLOSC2_HTJ2K_KAKADU_PARAMS");
     if (extra != nullptr && *extra != '\0') {
         std::string s(extra);
         size_t start = 0;
@@ -234,7 +234,7 @@ void apply_kakadu_overrides(siz_params &siz) {
             if (!tok.empty()) {
                 bool ok = siz.parse_string(tok.c_str());
                 if (debug) {
-                    fprintf(stderr, "[blosc2_grok] Kakadu param: %s (%s)\n",
+                    fprintf(stderr, "[blosc2_htj2k] Kakadu param: %s (%s)\n",
                             tok.c_str(), ok ? "ok" : "FAILED");
                 }
             }
@@ -244,7 +244,7 @@ void apply_kakadu_overrides(siz_params &siz) {
 
     // Optional wavelet decomposition tuning. We keep the same env var name as the
     // Grok backend so callers can tune both backends uniformly.
-    const char *clevels_s = std::getenv("BLOSC2_GROK_CLEVELS");
+    const char *clevels_s = std::getenv("BLOSC2_HTJ2K_CLEVELS");
     if (clevels_s != nullptr && *clevels_s != '\0') {
         char *end = nullptr;
         long clevels = std::strtol(clevels_s, &end, 10);
@@ -257,24 +257,24 @@ void apply_kakadu_overrides(siz_params &siz) {
             std::string cmd = "Clevels=" + std::to_string(clevels);
             bool ok = siz.parse_string(cmd.c_str());
             if (debug) {
-                fprintf(stderr, "[blosc2_grok] Kakadu Clevels=%ld (%s)\n",
+                fprintf(stderr, "[blosc2_htj2k] Kakadu Clevels=%ld (%s)\n",
                         clevels, ok ? "ok" : "FAILED");
             }
         } else if (debug) {
-            fprintf(stderr, "[blosc2_grok] Ignoring invalid BLOSC2_GROK_CLEVELS=%s\n", clevels_s);
+            fprintf(stderr, "[blosc2_htj2k] Ignoring invalid BLOSC2_HTJ2K_CLEVELS=%s\n", clevels_s);
         }
     }
 }
 
 // Choose conservative defaults for lossless/lossy operation unless explicitly
-// overridden by BLOSC2_GROK_KAKADU_PARAMS.
+// overridden by BLOSC2_HTJ2K_KAKADU_PARAMS.
 void apply_kakadu_rate_defaults(siz_params &siz, int32_t precision, bool rate_controlled) {
-    const bool debug = std::getenv("BLOSC2_GROK_DEBUG") != nullptr;
+    const bool debug = std::getenv("BLOSC2_HTJ2K_DEBUG") != nullptr;
     if (!rate_controlled) {
         if (!kakadu_extra_has_param("creversible")) {
             bool ok = siz.parse_string("Creversible=yes");
             if (debug) {
-                fprintf(stderr, "[blosc2_grok] Kakadu lossless default: Creversible=yes (%s)\n",
+                fprintf(stderr, "[blosc2_htj2k] Kakadu lossless default: Creversible=yes (%s)\n",
                         ok ? "ok" : "FAILED");
             }
         }
@@ -291,7 +291,7 @@ void apply_kakadu_rate_defaults(siz_params &siz, int32_t precision, bool rate_co
     if (!kakadu_extra_has_param("creversible")) {
         bool ok = siz.parse_string("Creversible=no");
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] Kakadu rate default: Creversible=no (%s)\n",
+            fprintf(stderr, "[blosc2_htj2k] Kakadu rate default: Creversible=no (%s)\n",
                     ok ? "ok" : "FAILED");
         }
     }
@@ -303,7 +303,7 @@ void apply_kakadu_rate_defaults(siz_params &siz, int32_t precision, bool rate_co
         std::snprintf(cmd, sizeof(cmd), "Qstep=%.17g", qstep);
         bool ok = siz.parse_string(cmd);
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] Kakadu rate default: %s (%s)\n",
+            fprintf(stderr, "[blosc2_htj2k] Kakadu rate default: %s (%s)\n",
                     cmd, ok ? "ok" : "FAILED");
         }
     }
@@ -329,9 +329,9 @@ struct KakaduTune {
 // Read optional Kakadu speed/precision/thread tuning from the environment.
 KakaduTune get_kakadu_tune() {
     KakaduTune t;
-    t.force_precise = env_flag("BLOSC2_GROK_KAKADU_PRECISE", true);
-    t.want_fastest = env_flag("BLOSC2_GROK_KAKADU_FAST", false);
-    t.threads = env_int("BLOSC2_GROK_KAKADU_THREADS", 0);
+    t.force_precise = env_flag("BLOSC2_HTJ2K_KAKADU_PRECISE", true);
+    t.want_fastest = env_flag("BLOSC2_HTJ2K_KAKADU_FAST", false);
+    t.threads = env_int("BLOSC2_HTJ2K_KAKADU_THREADS", 0);
     return t;
 }
 
@@ -448,11 +448,11 @@ int kakadu_encode(
     const void* /*chunk*/,
     bool htj2k
 ) {
-    const bool debug = std::getenv("BLOSC2_GROK_DEBUG") != nullptr;
+    const bool debug = std::getenv("BLOSC2_HTJ2K_DEBUG") != nullptr;
     ensure_kakadu_handlers(debug);
     const KakaduTune tune = get_kakadu_tune();
     if (debug) {
-        fprintf(stderr, "[blosc2_grok] Kakadu tune: force_precise=%d want_fastest=%d threads=%d\n",
+        fprintf(stderr, "[blosc2_htj2k] Kakadu tune: force_precise=%d want_fastest=%d threads=%d\n",
                 tune.force_precise ? 1 : 0, tune.want_fastest ? 1 : 0, tune.threads);
     }
     // J2K keeps the existing JP2 container path.  HTJ2K is emitted as a raw
@@ -460,7 +460,7 @@ int kakadu_encode(
     // JPH file wrapper.
     bool write_jp2 = !htj2k;
     if (debug) {
-        fprintf(stderr, "[blosc2_grok] Kakadu encoder path selected (%s, %s)\n",
+        fprintf(stderr, "[blosc2_htj2k] Kakadu encoder path selected (%s, %s)\n",
                 htj2k ? "HTJ2K" : "J2K",
                 write_jp2 ? "JP2 container" : "raw codestream");
     }
@@ -471,14 +471,14 @@ int kakadu_encode(
     bool has_b2nd = load_b2nd_info(cparams, dim_x, dim_y, num_comps, typesize);
 
     if (debug) {
-        fprintf(stderr, "[blosc2_grok] Kakadu has_b2nd=%d dim_x=%ld dim_y=%ld num_comps=%d typesize=%d\n",
+        fprintf(stderr, "[blosc2_htj2k] Kakadu has_b2nd=%d dim_x=%ld dim_y=%ld num_comps=%d typesize=%d\n",
                 has_b2nd, static_cast<long>(dim_x), static_cast<long>(dim_y), num_comps, typesize);
     }
 
     // If no b2nd meta available, we cannot proceed - codec_params is not reliable
     if (!has_b2nd) {
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] Kakadu encoder error: no b2nd metadata found\n");
+            fprintf(stderr, "[blosc2_htj2k] Kakadu encoder error: no b2nd metadata found\n");
         }
         return -1;
     }
@@ -488,7 +488,7 @@ int kakadu_encode(
     }
     if (!(typesize == 1 || typesize == 2)) {
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] Kakadu encode error: unsupported typesize=%d (only 1 and 2 are supported)\n",
+            fprintf(stderr, "[blosc2_htj2k] Kakadu encode error: unsupported typesize=%d (only 1 and 2 are supported)\n",
                     typesize);
         }
         return -1;
@@ -497,13 +497,13 @@ int kakadu_encode(
     const int precision = typesize * 8;
     const int64_t expected_len = dim_x * dim_y * num_comps * typesize;
     if (debug) {
-        fprintf(stderr, "[blosc2_grok] Kakadu encode dims=%ldx%ld comps=%d typesize=%d input_len=%d expected=%ld output_len=%d\n",
+        fprintf(stderr, "[blosc2_htj2k] Kakadu encode dims=%ldx%ld comps=%d typesize=%d input_len=%d expected=%ld output_len=%d\n",
                 static_cast<long>(dim_x), static_cast<long>(dim_y), num_comps, typesize,
                 input_len, static_cast<long>(expected_len), output_len);
     }
     if (input_len < expected_len) {
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] Kakadu encode error: input_len too small\n");
+            fprintf(stderr, "[blosc2_htj2k] Kakadu encode error: input_len too small\n");
         }
         return -1;
     }
@@ -609,7 +609,7 @@ int kakadu_encode(
                                                 precisions.data(), is_signed.get());
         }
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] Kakadu push_stripe needs_more=%d\n", needs_more ? 1 : 0);
+            fprintf(stderr, "[blosc2_htj2k] Kakadu push_stripe needs_more=%d\n", needs_more ? 1 : 0);
         }
 
         compressor.finish();
@@ -622,17 +622,17 @@ int kakadu_encode(
         }
     } catch (kdu_exception) {
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] Kakadu encoder exception\n");
+            fprintf(stderr, "[blosc2_htj2k] Kakadu encoder exception\n");
         }
         return -1;
     }
 
     if (debug) {
-        fprintf(stderr, "[blosc2_grok] Kakadu encoded bytes=%zu\n", target.data.size());
+        fprintf(stderr, "[blosc2_htj2k] Kakadu encoded bytes=%zu\n", target.data.size());
     }
     if (static_cast<int32_t>(target.data.size()) > output_len) {
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] Kakadu encode error: output buffer too small\n");
+            fprintf(stderr, "[blosc2_htj2k] Kakadu encode error: output buffer too small\n");
         }
         return 0;
     }
@@ -650,16 +650,16 @@ int kakadu_decode(
     blosc2_dparams * /*dparams*/,
     const void * /*chunk*/
 ) {
-    const bool debug = std::getenv("BLOSC2_GROK_DEBUG") != nullptr;
+    const bool debug = std::getenv("BLOSC2_HTJ2K_DEBUG") != nullptr;
     ensure_kakadu_handlers(debug);
     const KakaduTune tune = get_kakadu_tune();
     if (debug) {
-        fprintf(stderr, "[blosc2_grok] Kakadu tune: force_precise=%d want_fastest=%d threads=%d\n",
+        fprintf(stderr, "[blosc2_htj2k] Kakadu tune: force_precise=%d want_fastest=%d threads=%d\n",
                 tune.force_precise ? 1 : 0, tune.want_fastest ? 1 : 0, tune.threads);
     }
     const bool is_jp2 = has_jp2_signature(input, input_len);
     if (debug) {
-        fprintf(stderr, "[blosc2_grok] Kakadu decoder path selected (%s)\n",
+        fprintf(stderr, "[blosc2_htj2k] Kakadu decoder path selected (%s)\n",
                 is_jp2 ? "JP2 container" : "raw codestream");
     }
     kdu_compressed_source_buffered source;
@@ -676,7 +676,7 @@ int kakadu_decode(
             int hdr = jp2.read_header(true);
             if (hdr <= 0) {
                 if (debug) {
-                    fprintf(stderr, "[blosc2_grok] Kakadu JP2 header not ready or incompatible\n");
+                    fprintf(stderr, "[blosc2_htj2k] Kakadu JP2 header not ready or incompatible\n");
                 }
                 return -1;
             }
@@ -687,7 +687,7 @@ int kakadu_decode(
 
         int num_comps = codestream.get_num_components(true);
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] Kakadu decoder: num_comps=%d\n", num_comps);
+            fprintf(stderr, "[blosc2_htj2k] Kakadu decoder: num_comps=%d\n", num_comps);
         }
         if (!((num_comps == 1) || (num_comps == 3))) {
             codestream.destroy();
@@ -697,7 +697,7 @@ int kakadu_decode(
         kdu_dims dims;
         codestream.get_dims(0, dims, true);
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] Kakadu decoder: dims.x=%ld, dims.y=%ld\n", (long)dims.size.x, (long)dims.size.y);
+            fprintf(stderr, "[blosc2_htj2k] Kakadu decoder: dims.x=%ld, dims.y=%ld\n", (long)dims.size.x, (long)dims.size.y);
         }
         int width = dims.size.x;
         int height = dims.size.y;
@@ -712,12 +712,12 @@ int kakadu_decode(
 
         int precision = codestream.get_bit_depth(0, true);
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] Kakadu decoder: codestream precision=%d bits\n", precision);
+            fprintf(stderr, "[blosc2_htj2k] Kakadu decoder: codestream precision=%d bits\n", precision);
         }
         // The transparent codec path currently maps Blosc chunks back to uint8/uint16.
         if (!(precision == 8 || precision == 16)) {
             if (debug) {
-                fprintf(stderr, "[blosc2_grok] Kakadu: unsupported precision=%d (only 8 and 16 supported)\n", precision);
+                fprintf(stderr, "[blosc2_htj2k] Kakadu: unsupported precision=%d (only 8 and 16 supported)\n", precision);
             }
             codestream.destroy();
             return -1;
@@ -744,13 +744,13 @@ int kakadu_decode(
         ThreadEnvGuard thread_env;
         thread_env.setup(tune.threads);
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] Kakadu decoder: starting stripe decompressor\n");
+            fprintf(stderr, "[blosc2_htj2k] Kakadu decoder: starting stripe decompressor\n");
         }
         decompressor.start(codestream, tune.force_precise, tune.want_fastest, thread_env.ptr());
 
         std::vector<int> stripe_heights(num_comps, 0);
         std::vector<int> precisions(num_comps, precision);
-        const int requested_stripe_height = env_int("BLOSC2_GROK_KAKADU_DECODE_STRIPE_HEIGHT", 128);
+        const int requested_stripe_height = env_int("BLOSC2_HTJ2K_KAKADU_DECODE_STRIPE_HEIGHT", 128);
         const int max_stripe_height =
             (requested_stripe_height > 0 && requested_stripe_height < height) ?
             requested_stripe_height : height;
@@ -761,7 +761,7 @@ int kakadu_decode(
         // stripe.  Pulling moderate stripes also keeps Kakadu cleanup simple
         // for large, real detector frames.
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] Kakadu decoder: pulling stripes height<=%d\n",
+            fprintf(stderr, "[blosc2_htj2k] Kakadu decoder: pulling stripes height<=%d\n",
                     max_stripe_height);
         }
         std::unique_ptr<bool[]> is_signed;
@@ -808,7 +808,7 @@ int kakadu_decode(
             }
             rows_done += rows;
             if (debug) {
-                fprintf(stderr, "[blosc2_grok] Kakadu decoder: pulled rows=%d/%d needs_more=%d\n",
+                fprintf(stderr, "[blosc2_htj2k] Kakadu decoder: pulled rows=%d/%d needs_more=%d\n",
                         rows_done, height, needs_more ? 1 : 0);
             }
             if (!needs_more) {
@@ -818,7 +818,7 @@ int kakadu_decode(
 
         if (rows_done != height) {
             if (debug) {
-                fprintf(stderr, "[blosc2_grok] Kakadu decoder error: incomplete stripe decode rows=%d/%d\n",
+                fprintf(stderr, "[blosc2_htj2k] Kakadu decoder error: incomplete stripe decode rows=%d/%d\n",
                         rows_done, height);
             }
             decompressor.reset();
@@ -826,11 +826,11 @@ int kakadu_decode(
             return -1;
         }
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] Kakadu decoder: resetting stripe decompressor\n");
+            fprintf(stderr, "[blosc2_htj2k] Kakadu decoder: resetting stripe decompressor\n");
         }
         decompressor.reset();
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] Kakadu decoder: stripe decompressor reset done\n");
+            fprintf(stderr, "[blosc2_htj2k] Kakadu decoder: stripe decompressor reset done\n");
         }
         if (typesize == 1) {
             std::memcpy(output, decoded8.data(), static_cast<size_t>(expected));
@@ -839,7 +839,7 @@ int kakadu_decode(
         }
         codestream.destroy();
         if (debug) {
-            fprintf(stderr, "[blosc2_grok] Kakadu decoder: codestream destroyed\n");
+            fprintf(stderr, "[blosc2_htj2k] Kakadu decoder: codestream destroyed\n");
         }
         if (is_jp2) {
             jp2.close();
@@ -850,7 +850,7 @@ int kakadu_decode(
     }
 
     if (debug) {
-        fprintf(stderr, "[blosc2_grok] Kakadu decoder: complete\n");
+        fprintf(stderr, "[blosc2_htj2k] Kakadu decoder: complete\n");
     }
     return output_len;
 }

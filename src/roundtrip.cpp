@@ -1,5 +1,5 @@
 /*********************************************************************
-* blosc2_grok: Grok (JPEG2000 codec) plugin for Blosc2
+* blosc2_htj2k: Grok (JPEG2000 codec) plugin for Blosc2
 *
 * Copyright (c) 2023  The Blosc Development Team <blosc@blosc.org>
 * https://blosc.org
@@ -35,13 +35,13 @@ Decompress OK
 #include "b2nd.h"
 #include "blosc2.h"
 #include "blosc2/codecs-registry.h"
-#include "blosc2_grok.h"
+#include "blosc2_htj2k.h"
 #include "grok.h"
 #include "utils.h"
 
 int comp_decomp() {
-    const char *filename = "/Users/martaiborra/blosc2_grok/examples/MI04_020751.ppm";
-    const char *outFile = "/Users/martaiborra/blosc2_grok/src/test_gray.jp2";
+    const char *filename = "/Users/martaiborra/blosc2_htj2k/examples/MI04_020751.ppm";
+    const char *outFile = "/Users/martaiborra/blosc2_htj2k/src/test_gray.jp2";
     uint64_t compressedLength = 0;
     PPMImage *img = readPPM(filename);
 
@@ -81,7 +81,7 @@ int comp_decomp() {
     }
 
     // Codec parameters
-    blosc2_grok_params codec_params = {0};
+    blosc2_htj2k_params codec_params = {0};
     codec_params.compressParams = compressParams;
     codec_params.streamParams = streamParams;
     cparams.codec_params = &codec_params;
@@ -140,11 +140,11 @@ beach:
 int main(void) {
     // Initialization
     blosc2_init();
-    blosc2_grok_init(0, true);
+    blosc2_htj2k_init(0, true);
 
     int error = comp_decomp();
 
-    blosc2_grok_destroy();
+    blosc2_htj2k_destroy();
     blosc2_destroy();
     return error;
 }

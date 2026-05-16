@@ -1,5 +1,5 @@
 ##############################################################################
-# blosc2_grok: Grok (JPEG2000 codec) plugin for Blosc2
+# blosc2_htj2k: Grok (JPEG2000 codec) plugin for Blosc2
 #
 # Copyright (c) 2023  The Blosc Development Team <blosc@blosc.org>
 # https://blosc.org
@@ -11,7 +11,7 @@ requires = ["scikit-build-core", "blosc2>=4.0.0.b1"]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "blosc2_grok"
+name = "blosc2_htj2k"
 version = "0.3.6.dev0"
 readme = "README.md"
 authors = [
@@ -44,8 +44,8 @@ h5py-test = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Blosc/blosc2_grok"
-Issues = "https://github.com/Blosc/blosc2_grok/issues"
+Homepage = "https://github.com/Blosc/blosc2_htj2k"
+Issues = "https://github.com/Blosc/blosc2_htj2k/issues"
 
 [tool.setuptools]
 platforms = [ "any" ]
@@ -63,5 +63,5 @@ manylinux-aarch64-image = "manylinux_2_28"
 [tool.scikit-build]
 # Python ABI compatibility should not be a problem for Blosc plugins
 wheel.py-api = "py3"
-# Exclude grok static library and headers from wheel (already linked into libblosc2_grok.so)
+# Exclude grok static library and headers from wheel (already linked into libblosc2_htj2k.so)
 wheel.exclude = ["_unused_grok_lib", "_unused_grok_include"]

@@ -1,13 +1,38 @@
-# Blosc2 grok
+# blosc2_htj2k
 
-A plugin of the excellent [grok library](https://github.com/GrokImageCompression/grok) for Blosc2.  grok is a JPEG2000 codec, and with this plugin, you can use it as yet another codec in applications using Blosc2.  See an example of use at: https://github.com/Blosc/blosc2_grok/blob/main/examples/params.py
+Temporary Blosc2 plugin package for High Throughput JPEG2000/HTJ2K codestreams.
+
+During the transition before official c-blosc2 codec ids are assigned, this
+package registers a local dynamic codec:
+
+```text
+codec name: htj2k
+temporary id: 161
+library: libblosc2_htj2k.so
+```
+
+The codec itself is plugin-only.  The default backend priority is read from
+`blosc2_htj2k_plugins.json`:
+
+```json
+{
+  "htj2k": ["kakadu", "openhtj2k"]
+}
+```
+
+The OpenHTJ2K backend is the redistributable open-source HTJ2K backend and is
+built when the PR190-style `uint16` API is available.  If no OpenHTJ2K
+installation is configured, the default `pip install .` build downloads,
+builds and installs OpenHTJ2K PR190 into the temporary CMake build tree, then
+bundles the resulting runtime library next to the backend plugin.  The Kakadu
+backend is built only when Kakadu headers and libraries are provided.
 
 ## Installation
 
-For using `blosc2_grok` you will first have to install its wheel:
+For using `blosc2_htj2k` you will first have to install its wheel:
 
 ```shell
-pip install blosc2-grok -U
+pip install blosc2-htj2k -U
 ```
 
 ## Usage
@@ -15,41 +40,35 @@ pip install blosc2-grok -U
 ```python
 import blosc2
 import numpy as np
-import blosc2_grok
-from PIL import Image
+import blosc2_htj2k
 
-# Set the params for the grok codec
-kwargs = {}
-kwargs['cod_format'] = blosc2_grok.GrkFileFmt.GRK_FMT_JP2
-kwargs['quality_mode'] = "dB"
-kwargs['quality_layers'] = np.array([5], dtype=np.float64)
-blosc2_grok.set_params_defaults(**kwargs)
+blosc2_htj2k.configure(backend="openhtj2k")
 
-# Define the compression and decompression parameters for Blosc2.
-# Disable the filters and do not split blocks (these won't work with grok).
+data = np.arange(64 * 64, dtype=np.uint16).reshape(64, 64)
 cparams = {
-    'codec': blosc2.Codec.GROK,
-    'filters': [],
-    'splitmode': blosc2.SplitMode.NEVER_SPLIT,
+    "codec": blosc2_htj2k.CODEC_ID,
+    "filters": [],
+    "splitmode": blosc2.SplitMode.NEVER_SPLIT,
 }
-
-# Read the image
-im = Image.open("examples/kodim23.png")
-# Convert the image to a numpy array
-np_array = np.asarray(im)
-
-# Transform the numpy array to a blosc2 array. This is where compression happens.
 bl_array = blosc2.asarray(
-    np_array,
-    chunks=np_array.shape,
-    blocks=np_array.shape,
+    data,
+    chunks=data.shape,
+    blocks=data.shape,
     cparams=cparams,
-    urlpath="examples/kodim23.b2nd",
-    mode="w",
 )
+np.testing.assert_array_equal(bl_array[...], data)
+```
 
-# Print information about the array, see the compression ratio (cratio)
-print(bl_array.info)
+For C/C++ or HDF5-only programs that cannot call Python, preload the bootstrap
+library so c-blosc2 registers the temporary ids before the first codec use:
+
+```bash
+export HDF5_PLUGIN_PATH=/path/to/hdf5/plugins
+export LD_LIBRARY_PATH=/path/to/blosc2/lib:/path/to/blosc2_htj2k:/path/to/openhtj2k/lib:${LD_LIBRARY_PATH:-}
+export LD_PRELOAD=/path/to/blosc2_htj2k/libblosc2_jpeg2000_bootstrap.so
+
+# Optional.  If omitted, the manifest priority chooses kakadu then openhtj2k.
+export BLOSC2_HTJ2K_BACKEND=openhtj2k
 ```
 
 ## Parameters for compression
@@ -87,7 +106,7 @@ The following parameters are available for compression for grok, with their defa
     ** 'max_cs_size': 0,  # See header of grok.h above
     ** 'max_comp_size': 0,  # See header of grok.h above
 
-*Note: * when using the `blosc2_grok` plugin from C, the structure used
+*Note: * when using the `blosc2_htj2k` plugin from C, the structure used
 for setting the parameters uses the `grok` parameters names. You can see an example
 in https://github.com/Blosc/leaps-examples/blob/main/c-compression/compress-tomo.c#L110 .
 
@@ -96,7 +115,7 @@ in https://github.com/Blosc/leaps-examples/blob/main/c-compression/compress-tomo
 As a simpler way to activate the rates quality mode, if you set the `codec_meta` from the `cparams` to an
 integer different from 0, the rates quality mode will be activated with a rate value equal to `codec_meta` / 10. If 
 `cod_format` is not specified, the default will be used. The `codec_meta` has priority to the `rates` param set with the 
-`blosc2_grok.set_params_defaults()`. Please note that only rates < 25.6 are supported with this notation.
+`blosc2_htj2k.set_params_defaults()`. Please note that only rates < 25.6 are supported with this notation.
 ```python
 import blosc2
 
@@ -111,10 +130,10 @@ cparams = {
 
 ## Runtime backend configuration
 
-`blosc2_grok` can route J2K and HTJ2K codestreams through family-specific
+`blosc2_htj2k` can route J2K and HTJ2K codestreams through family-specific
 runtime backends.  The preferred model is explicit configuration before the
-first encode/decode operation: Python users call `blosc2_grok.configure()`, and
-C/C++ hosts call `blosc2_grok_configure()`.  Environment variables are still
+first encode/decode operation: Python users call `blosc2_htj2k.configure()`, and
+C/C++ hosts call `blosc2_htj2k_configure()`.  Environment variables are still
 supported for command-line tools, HDF5-only deployments, and backwards
 compatibility.
 
@@ -139,14 +158,14 @@ ${plugin_root}/${family}/${backend}
 uses the default plugin root installed next to the shared library:
 
 ```text
-<libblosc2_grok directory>/plugins
+<libblosc2_htj2k directory>/plugins
 ```
 
 For example, with the default plugin root, `family=htj2k` and
 `backend=openhtj2k` selects:
 
 ```text
-<libblosc2_grok directory>/plugins/htj2k/openhtj2k
+<libblosc2_htj2k directory>/plugins/htj2k/openhtj2k
 ```
 
 ### Python configuration
@@ -154,63 +173,62 @@ For example, with the default plugin root, `family=htj2k` and
 Use `configure()` before the first Blosc2 encode/decode or HDF5 read/write:
 
 ```python
-import blosc2_grok
+import blosc2_htj2k
 
-blosc2_grok.configure(
+blosc2_htj2k.configure(
     j2k_backend="grok",
     htj2k_backend="openhtj2k",
 )
 ```
 
 All arguments are optional.  `plugin_path` is only needed when plugins are not
-installed under the default root next to `libblosc2_grok`.  A typical HTJ2K-only
+installed under the default root next to `libblosc2_htj2k`.  A typical HTJ2K-only
 configuration can leave J2K untouched:
 
 ```python
-import blosc2_grok
+import blosc2_htj2k
 
-blosc2_grok.configure(htj2k_backend="openhtj2k")
+blosc2_htj2k.configure(htj2k_backend="openhtj2k")
 ```
 
 The runtime can be inspected from Python:
 
 ```python
-import blosc2_grok
+import blosc2_htj2k
 
-print(blosc2_grok.available_backends())
-print(blosc2_grok.list_plugins())
-print(blosc2_grok.diagnose())
-print(blosc2_grok.selftest())
+print(blosc2_htj2k.available_backends())
+print(blosc2_htj2k.list_plugins())
+print(blosc2_htj2k.diagnose())
+print(blosc2_htj2k.selftest())
 ```
 
 The same diagnostics are available from the command line:
 
 ```bash
-python -m blosc2_grok --list-plugins
-python -m blosc2_grok --diagnose
-python -m blosc2_grok --selftest
+python -m blosc2_htj2k --list-plugins
+python -m blosc2_htj2k --diagnose
+python -m blosc2_htj2k --selftest
 ```
 
 ### C/C++ configuration
 
-C/C++ applications that link or explicitly load `libblosc2_grok` should
+C/C++ applications that link or explicitly load `libblosc2_htj2k` should
 configure the runtime before opening HDF5 files or using Blosc2 data that may
 need the codec:
 
 ```c
-#include "blosc2_grok_public.h"
+#include "blosc2_htj2k_public.h"
 
-blosc2_grok_runtime_config cfg = {0};
+blosc2_htj2k_runtime_config cfg = {0};
 cfg.struct_size = sizeof(cfg);
-cfg.j2k_backend = "grok";
-cfg.htj2k_backend = "openhtj2k";
+cfg.backend = "openhtj2k";
 
-if (blosc2_grok_configure(&cfg) != 0) {
-    fprintf(stderr, "%s\n", blosc2_grok_last_error());
+if (blosc2_htj2k_configure(&cfg) != 0) {
+    fprintf(stderr, "%s\n", blosc2_htj2k_last_error());
 }
 ```
 
-`blosc2_grok_list_plugins()` and `blosc2_grok_diagnose()` return JSON text into
+`blosc2_htj2k_list_plugins()` and `blosc2_htj2k_diagnose()` return JSON text into
 a caller-provided buffer.  Passing `NULL, 0` returns the required byte count.
 
 ### Environment-variable configuration
@@ -218,72 +236,83 @@ a caller-provided buffer.  Passing `NULL, 0` returns the required byte count.
 Environment variables remain useful when the host application cannot call the
 configuration API.  If no explicit API call has been made, backend selection is:
 
-1. Legacy direct-directory variables:
-   `BLOSC2_GROK_REPLACEMENT_DIR` for J2K and
-   `BLOSC2_GROK_HTJ2K_REPLACEMENT_DIR` for HTJ2K.
+1. Legacy direct-directory variable:
+   `BLOSC2_HTJ2K_REPLACEMENT_DIR`.
 2. Named backend variables:
-   `BLOSC2_GROK_PLUGIN_PATH`, `BLOSC2_GROK_J2K_BACKEND`, and
-   `BLOSC2_GROK_HTJ2K_BACKEND`.
+   `BLOSC2_HTJ2K_PLUGIN_PATH` and `BLOSC2_HTJ2K_BACKEND`.
 3. Default plugin root next to the shared library, when a named backend is used
-   without `BLOSC2_GROK_PLUGIN_PATH`.
-4. Installed manifest `blosc2_grok_plugins.json`, if present.  The packaged
-   manifest prefers Kakadu for J2K when the Kakadu plugin is installed, then
-   falls back to native Grok and finally to the Grok reference plugin:
-   `["kakadu", "native", "grok"]`.
-5. Built-in defaults: native Grok for J2K, and no backend for HTJ2K.
+   without `BLOSC2_HTJ2K_PLUGIN_PATH`.
+4. Installed manifest `blosc2_htj2k_plugins.json`, if present.  The packaged
+   manifest prefers Kakadu when the Kakadu plugin is installed, then falls
+   back to OpenHTJ2K: `["kakadu", "openhtj2k"]`.
 
 An explicit API call has priority over all backend-selection environment
 variables.  Configuration is finalized on first codec use; later calls to
-`configure()` or `blosc2_grok_configure()` fail with a clear error.
+`configure()` or `blosc2_htj2k_configure()` fail with a clear error.
 
 Named backend example:
 
 ```bash
-export BLOSC2_GROK_J2K_BACKEND="grok"
-export BLOSC2_GROK_HTJ2K_BACKEND="openhtj2k"
+export BLOSC2_HTJ2K_BACKEND="openhtj2k"
 ```
 
-Set `BLOSC2_GROK_PLUGIN_PATH` only for non-default plugin locations.
+Set `BLOSC2_HTJ2K_PLUGIN_PATH` only for non-default plugin locations.
 
 Legacy direct-directory examples:
 
 ```bash
-export BLOSC2_GROK_REPLACEMENT_DIR="/opt/blosc2_grok/plugins/j2k/grok"
-export BLOSC2_GROK_HTJ2K_REPLACEMENT_DIR="/opt/blosc2_grok/plugins/htj2k/openhtj2k"
+export BLOSC2_HTJ2K_REPLACEMENT_DIR="/opt/blosc2_htj2k/plugins/htj2k/openhtj2k"
 ```
 
 ### Available plugins
 
-The source tree always builds and installs a small Grok J2K replacement backend
-in `blosc2_grok/plugins/j2k/grok`.  This backend is intentionally equivalent to
-the native J2K path and exists to exercise the generic plugin mechanism.
+By default, CMake builds `blosc2_htj2k/plugins/htj2k/openhtj2k`.  If
+OpenHTJ2K headers and libraries are already available, discovery can be
+configured with `OPENHTJ2K_ROOT`, `OPENHTJ2K_INCLUDE_DIR` and
+`OPENHTJ2K_LIBRARY_DIR` or `OPENHTJ2K_LIB_PATH`.  In that case the backend is
+enabled only when a real CMake compile/link probe validates the PR #190-style
+`uint16` API.
 
-If OpenHTJ2K headers and libraries are available at build time, CMake builds
-`blosc2_grok/plugins/htj2k/openhtj2k`.  OpenHTJ2K discovery can be configured
-with `OPENHTJ2K_ROOT`, `OPENHTJ2K_INCLUDE_DIR` and `OPENHTJ2K_LIBRARY_DIR` or
-`OPENHTJ2K_LIB_PATH`.  The backend is enabled only when a real CMake
-compile/link probe validates the PR #190-style `uint16` API.
+If no OpenHTJ2K installation is found, the default build downloads and builds
+OpenHTJ2K PR190 automatically:
 
-If Kakadu headers and libraries are available at build time, CMake builds two
-physical Kakadu plugins sharing the same internal implementation:
-`blosc2_grok/plugins/j2k/kakadu` and `blosc2_grok/plugins/htj2k/kakadu`.
+```bash
+pip install -v --no-build-isolation --force-reinstall .
+```
+
+To disable the automatic download/build and require a pre-existing
+OpenHTJ2K installation:
+
+```bash
+CMAKE_ARGS="-DBLOSC2_HTJ2K_BUILD_OPENHTJ2K=OFF" \
+  pip install -v --no-build-isolation --force-reinstall .
+```
+
+The automatic build can be redirected with:
+
+```bash
+CMAKE_ARGS="-DBLOSC2_HTJ2K_OPENHTJ2K_REPOSITORY=https://github.com/osamu620/OpenHTJ2K.git \
+            -DBLOSC2_HTJ2K_OPENHTJ2K_GIT_TAG=refs/pull/190/head" \
+  pip install -v --no-build-isolation --force-reinstall .
+```
+
+If Kakadu headers and libraries are available at build time, CMake builds
+`blosc2_htj2k/plugins/htj2k/kakadu`.
 Kakadu discovery can be configured with `KAKADU_ROOT`, `KAKADU_INCLUDE_DIR` and
 `KAKADU_LIBRARY_DIR` or `KAKADU_LIB_PATH`.  Kakadu is optional and not
 redistributed by this project.
 
 Backend capabilities:
 
-| Backend | Built when | J2K | HTJ2K | `uint8` | `uint16` |
-| --- | --- | --- | --- | --- | --- |
-| native Grok | always | yes | no | yes | J2K only |
-| `plugins/j2k/grok` | always | yes | no | yes | J2K only |
-| `plugins/htj2k/openhtj2k` | OpenHTJ2K PR #190 API found | no | yes | yes | yes |
-| `plugins/j2k/kakadu` | Kakadu found | yes | no | yes | yes |
-| `plugins/htj2k/kakadu` | Kakadu found | no | yes | yes | yes |
+| Backend | Built when | HTJ2K | `uint8` | `uint16` |
+| --- | --- | --- | --- | --- |
+| `plugins/htj2k/openhtj2k` | OpenHTJ2K PR #190 API found | yes | yes | yes |
+| `plugins/htj2k/kakadu` | Kakadu found | yes | yes | yes |
 
 ### Building optional backends
 
-OpenHTJ2K example:
+OpenHTJ2K example, using an existing local installation instead of the
+automatic download:
 
 ```bash
 export OPENHTJ2K_ROOT=/path/to/openhtj2k/install
@@ -320,29 +349,28 @@ discoverable:
 export HDF5_PLUGIN_PATH="$(python -c 'import hdf5plugin; print(hdf5plugin.PLUGIN_PATH)')"
 ```
 
-For Python processes, importing `blosc2_grok` before the first HDF5 read/write
+For Python processes, importing `blosc2_htj2k` before the first HDF5 read/write
 loads the native codec library with global visibility:
 
 ```python
-import blosc2_grok
+import blosc2_htj2k
 import hdf5plugin
 import h5py
 ```
 
 For C/C++ applications, the preferred approach is to link or load
-`libblosc2_grok` and call `blosc2_grok_configure()` before HDF5 starts reading
-compressed datasets.  `LD_PRELOAD` remains useful for applications or command
-line tools where no explicit initialization hook is available:
+`libblosc2_htj2k` and call `blosc2_htj2k_register_codec()` and
+`blosc2_htj2k_configure()` before HDF5 starts reading compressed datasets.
+`LD_PRELOAD` remains useful for applications or command line tools where no
+explicit initialization hook is available:
 
 ```bash
-export BLOSC2_GROK_LIBRARY="$(python -c 'import blosc2_grok; print(blosc2_grok.libpath)')"
-export LD_PRELOAD="${BLOSC2_GROK_LIBRARY}${LD_PRELOAD:+:$LD_PRELOAD}"
+export LD_LIBRARY_PATH=/path/to/blosc2/lib:/path/to/blosc2_htj2k:/path/to/openhtj2k/lib:${LD_LIBRARY_PATH:-}
+export LD_PRELOAD=/path/to/blosc2_htj2k/libblosc2_jpeg2000_bootstrap.so
 ```
 
-In deployments without Python, set `BLOSC2_GROK_LIBRARY` directly to the
-installed `libblosc2_grok.so` path.  The preload step ensures that HDF5's
-Blosc2 filter and external codec resolution see the same already-loaded codec
-library.
+The bootstrap calls `blosc2_init()` and registers both temporary ids, `j2k=160`
+and `htj2k=161`, after Blosc2 has initialized its built-in registry.
 
 If the dynamic loader reports that a shared object or DLL cannot be opened, the
 backend was found but one of its dependent libraries was not.  In practice,
@@ -351,7 +379,7 @@ this usually means a backend library directory is missing from
 
 ## Notes
 
-When using `blosc2_grok`, there are some restrictions that you have
+When using `blosc2_htj2k`, there are some restrictions that you have
 to keep in mind.
 
 * The minimum supported image size is around 256 bytes, so an image with

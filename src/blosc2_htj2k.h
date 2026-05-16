@@ -1,5 +1,5 @@
 /*********************************************************************
- * blosc2_grok: Grok (JPEG2000 codec) plugin for Blosc2
+ * blosc2_htj2k: Grok (JPEG2000 codec) plugin for Blosc2
  *
  * Copyright (c) 2023  The Blosc Development Team <blosc@blosc.org>
  * https://blosc.org
@@ -24,12 +24,12 @@ extern "C" {
 typedef struct {
     grk_cparameters compressParams;
     grk_stream_params streamParams;
-} blosc2_grok_params;
+} blosc2_htj2k_params;
 
-void blosc2_grok_init(uint32_t nthreads, bool verbose);
-void blosc2_grok_destroy();
+void blosc2_htj2k_init(uint32_t nthreads, bool verbose);
+void blosc2_htj2k_destroy();
 
-void blosc2_grok_set_default_params(const int64_t *tile_size, const int64_t *tile_offset,
+void blosc2_htj2k_set_default_params(const int64_t *tile_size, const int64_t *tile_offset,
                                     int numlayers, char *quality_mode, const double *quality_layers,
                                     int numgbits, char *progression,
                                     int num_resolutions, const int64_t *codeblock_size, int cblk_style,

@@ -1,5 +1,5 @@
 /*********************************************************************
- * blosc2_grok: Grok (JPEG2000 codec) plugin for Blosc2
+ * blosc2_htj2k: Grok (JPEG2000 codec) plugin for Blosc2
  *
  * Copyright (c) 2023  The Blosc Development Team <blosc@blosc.org>
  * https://blosc.org
@@ -26,9 +26,9 @@
 // RAII buffer ownership used by the native Grok encoder/decoder.
 #include <memory>
 
-#include "blosc2_grok.h"
+#include "blosc2_htj2k.h"
 #include "b2nd_layout.h"
-#include "blosc2_grok_public.h"
+#include "blosc2_htj2k_public.h"
 #include "codec_requests.h"
 #include "codestream_detector.h"
 #include "jpeg2000_codec_paths.h"
@@ -38,37 +38,37 @@
 static grk_cparameters GRK_CPARAMETERS_DEFAULTS = {0};
 static bool GRK_INITIALIZED = false;
 
-using blosc2_grok_detail::B2ndLayout;
-using blosc2_grok_detail::CodecFamily;
-using blosc2_grok_detail::decode_htj2k_with_plugin;
-using blosc2_grok_detail::decode_j2k_with_plugin_or_native;
-using blosc2_grok_detail::detect_codestream_family;
-using blosc2_grok_detail::encode_htj2k_with_plugin;
-using blosc2_grok_detail::encode_j2k_with_plugin_or_native;
-using blosc2_grok_detail::image_layout_from_b2nd;
-using blosc2_grok_detail::is_htj2k_requested;
-using blosc2_grok_detail::load_htj2k_replacement_plugin;
-using blosc2_grok_detail::load_j2k_replacement_plugin;
-using blosc2_grok_detail::make_htj2k_decode_request;
-using blosc2_grok_detail::make_htj2k_encode_request;
-using blosc2_grok_detail::make_j2k_decode_request;
-using blosc2_grok_detail::make_j2k_encode_request;
-using blosc2_grok_detail::read_b2nd_layout;
-using blosc2_grok_detail::configure_runtime;
-using blosc2_grok_detail::diagnose_runtime_json;
-using blosc2_grok_detail::freeze_runtime_config;
-using blosc2_grok_detail::last_runtime_error;
-using blosc2_grok_detail::list_plugins_json;
-using blosc2_grok_detail::set_runtime_error;
-using blosc2_grok_detail::unload_replacement_plugins;
+using blosc2_htj2k_detail::B2ndLayout;
+using blosc2_htj2k_detail::CodecFamily;
+using blosc2_htj2k_detail::decode_htj2k_with_plugin;
+using blosc2_htj2k_detail::decode_j2k_with_plugin_or_native;
+using blosc2_htj2k_detail::detect_codestream_family;
+using blosc2_htj2k_detail::encode_htj2k_with_plugin;
+using blosc2_htj2k_detail::encode_j2k_with_plugin_or_native;
+using blosc2_htj2k_detail::image_layout_from_b2nd;
+using blosc2_htj2k_detail::is_htj2k_requested;
+using blosc2_htj2k_detail::load_htj2k_replacement_plugin;
+using blosc2_htj2k_detail::load_j2k_replacement_plugin;
+using blosc2_htj2k_detail::make_htj2k_decode_request;
+using blosc2_htj2k_detail::make_htj2k_encode_request;
+using blosc2_htj2k_detail::make_j2k_decode_request;
+using blosc2_htj2k_detail::make_j2k_encode_request;
+using blosc2_htj2k_detail::read_b2nd_layout;
+using blosc2_htj2k_detail::configure_runtime;
+using blosc2_htj2k_detail::diagnose_runtime_json;
+using blosc2_htj2k_detail::freeze_runtime_config;
+using blosc2_htj2k_detail::last_runtime_error;
+using blosc2_htj2k_detail::list_plugins_json;
+using blosc2_htj2k_detail::set_runtime_error;
+using blosc2_htj2k_detail::unload_replacement_plugins;
 
 // Function responsibility map:
 //
 // Strict runtime replacement mechanism:
 // - plugin_loader.*: discover/cache J2K and HTJ2K backends from their family-specific env vars.
 // - jpeg2000_codec_paths.*: call the selected J2K/HTJ2K backend or the native J2K fallback.
-// - blosc2_grok_encoder(), blosc2_grok_decoder(): orchestrate family selection and dispatch.
-// - blosc2_grok_destroy(): release loaded backend handles and deinitialize Grok.
+// - blosc2_htj2k_encoder(), blosc2_htj2k_decoder(): orchestrate family selection and dispatch.
+// - blosc2_htj2k_destroy(): release loaded backend handles and deinitialize Grok.
 //
 // JPEG2000-family request shaping and detection:
 // - codec_requests.*: detect HTJ2K encode intent and build family-specific plugin requests.
@@ -76,7 +76,7 @@ using blosc2_grok_detail::unload_replacement_plugins;
 //
 // Native Grok runtime support used by the fallback/reference backend:
 // - grok_init_mutex(), ensure_grok_initialized(): guard Grok process-global initialization.
-// - blosc2_grok_init(), blosc2_grok_set_default_params(): public runtime setup.
+// - blosc2_htj2k_init(), blosc2_htj2k_set_default_params(): public runtime setup.
 // - beach_decoder(): shared decoder cleanup helper.
 namespace {
 
@@ -92,13 +92,13 @@ std::mutex &grok_init_mutex() {
 void ensure_grok_initialized(uint32_t nthreads = 0, bool verbose = false) {
     std::lock_guard<std::mutex> lock(grok_init_mutex());
     if (!GRK_INITIALIZED) {
-        blosc2_grok_init(nthreads, verbose);
+        blosc2_htj2k_init(nthreads, verbose);
     }
 }
 
 // Return the Grok-compatible parameter block controlling the current encode.
 grk_cparameters *current_compress_params(blosc2_cparams *cparams) {
-    auto *codec_params = cparams ? (blosc2_grok_params *)cparams->codec_params : nullptr;
+    auto *codec_params = cparams ? (blosc2_htj2k_params *)cparams->codec_params : nullptr;
     return codec_params ? &codec_params->compressParams : &GRK_CPARAMETERS_DEFAULTS;
 }
 
@@ -122,7 +122,7 @@ int copy_string_to_c_buffer(const std::string &value, char *buffer, size_t buffe
 
 
 // Initialize Grok and reset the process-wide native Grok compression defaults.
-void blosc2_grok_init(uint32_t nthreads, bool verbose) {
+void blosc2_htj2k_init(uint32_t nthreads, bool verbose) {
     // initialize library
     grk_initialize(nullptr, nthreads, verbose);
     // set default parameters
@@ -132,7 +132,7 @@ void blosc2_grok_init(uint32_t nthreads, bool verbose) {
 }
 
 // Update the process-wide default Grok compression parameters from Python/C callers.
-void blosc2_grok_set_default_params(const int64_t *tile_size, const int64_t *tile_offset,
+void blosc2_htj2k_set_default_params(const int64_t *tile_size, const int64_t *tile_offset,
                                     int numlayers, char *quality_mode, const double *quality_layers,
                                     int numgbits, char *progression,
                                     int num_resolutions, const int64_t *codeblock_size, int cblk_style,
@@ -266,34 +266,57 @@ void blosc2_grok_set_default_params(const int64_t *tile_size, const int64_t *til
     grk_initialize(nullptr, GRK_CPARAMETERS_DEFAULTS.numThreads, GRK_CPARAMETERS_DEFAULTS.verbose);
 }
 
-int blosc2_grok_configure(const blosc2_grok_runtime_config *config) {
+int blosc2_htj2k_configure(const blosc2_htj2k_runtime_config *config) {
     if (config == nullptr) {
-        set_runtime_error("blosc2_grok_configure received a null config");
+        set_runtime_error("blosc2_htj2k_configure received a null config");
         return -1;
     }
-    if (config->struct_size < sizeof(blosc2_grok_runtime_config)) {
-        set_runtime_error("blosc2_grok_runtime_config has an unsupported struct_size");
+    if (config->struct_size < sizeof(blosc2_htj2k_runtime_config)) {
+        set_runtime_error("blosc2_htj2k_runtime_config has an unsupported struct_size");
         return -1;
     }
-    return configure_runtime(config->plugin_path, config->j2k_backend, config->htj2k_backend);
+    return configure_runtime(config->plugin_path, nullptr, config->backend);
 }
 
-int blosc2_grok_list_plugins(char *buffer, size_t buffer_len) {
+int blosc2_htj2k_register_codec(void) {
+    int existing = blosc2_compname_to_compcode("htj2k");
+    if (existing == BLOSC2_HTJ2K_TEMP_CODEC_ID) {
+        return 0;
+    }
+    if (existing >= 0) {
+        set_runtime_error("Blosc2 codec name 'htj2k' is already registered with another id");
+        return -1;
+    }
+
+    blosc2_codec codec = {};
+    codec.compcode = BLOSC2_HTJ2K_TEMP_CODEC_ID;
+    codec.compname = const_cast<char *>("htj2k");
+    codec.complib = BLOSC2_HTJ2K_TEMP_CODEC_ID;
+    codec.version = 1;
+    codec.encoder = nullptr;
+    codec.decoder = nullptr;
+    int rc = blosc2_register_codec(&codec);
+    if (rc < 0) {
+        set_runtime_error("failed to register temporary Blosc2 codec 'htj2k' with id 161");
+    }
+    return rc;
+}
+
+int blosc2_htj2k_list_plugins(char *buffer, size_t buffer_len) {
     return copy_string_to_c_buffer(list_plugins_json(), buffer, buffer_len);
 }
 
-int blosc2_grok_diagnose(char *buffer, size_t buffer_len) {
+int blosc2_htj2k_diagnose(char *buffer, size_t buffer_len) {
     return copy_string_to_c_buffer(diagnose_runtime_json(), buffer, buffer_len);
 }
 
-const char *blosc2_grok_last_error(void) {
+const char *blosc2_htj2k_last_error(void) {
     return last_runtime_error();
 }
 
 
-// Blosc2 encoder entry point: route J2K to the J2K replacement/native path and
-// route HTJ2K exclusively to an HTJ2K replacement plugin.
-int blosc2_grok_encoder(
+// Blosc2 encoder entry point for the temporary HTJ2K codec.
+int blosc2_htj2k_encoder(
     const uint8_t *input,
     int32_t input_len,
     uint8_t *output,
@@ -303,26 +326,29 @@ int blosc2_grok_encoder(
     const void* chunk
 ) {
     freeze_runtime_config();
-    const bool debug = std::getenv("BLOSC2_GROK_DEBUG") != nullptr;
+    const bool debug = std::getenv("BLOSC2_HTJ2K_DEBUG") != nullptr;
     if (debug) {
-        fprintf(stderr, "[blosc2_grok] blosc2_grok_encoder called: meta=%d, input_len=%d\n", meta, input_len);
+        fprintf(stderr, "[blosc2_htj2k] blosc2_htj2k_encoder called: meta=%d, input_len=%d\n", meta, input_len);
     }
 
-    CodecFamily family = requested_encode_family(cparams);
+    ensure_grok_initialized(0, false);
     grk_cparameters *compress_params = current_compress_params(cparams);
-    if (family == CodecFamily::HTJ2K) {
-        htj2k_codec_request_t request = make_htj2k_encode_request(meta, cparams, chunk, compress_params);
-        return encode_htj2k_with_plugin(input, input_len, output, output_len, meta, cparams, chunk,
-                                        request, load_htj2k_replacement_plugin(), debug);
+
+    htj2k_codec_plugin_t *plugin = load_htj2k_replacement_plugin();
+    if (plugin == nullptr) {
+        fprintf(stderr,
+                "[blosc2_htj2k] HTJ2K encoding requires an HTJ2K backend plugin; "
+                "configure BLOSC2_HTJ2K_BACKEND or install a manifest selecting kakadu/openhtj2k\n");
+        return -1;
     }
 
-    j2k_codec_request_t request = make_j2k_encode_request(meta, cparams, chunk, compress_params);
-    return encode_j2k_with_plugin_or_native(input, input_len, output, output_len, meta, cparams, chunk,
-                                            request, load_j2k_replacement_plugin(), debug);
+    htj2k_codec_request_t request = make_htj2k_encode_request(meta, cparams, chunk, compress_params);
+    return encode_htj2k_with_plugin(input, input_len, output, output_len, meta, cparams, chunk,
+                                    request, plugin, debug);
 }
 
 // Native Grok implementation of the Blosc2 encoder entry point.
-int blosc2_grok_native_encoder(
+int blosc2_htj2k_native_encoder(
     const uint8_t *input,
     int32_t input_len,
     uint8_t *output,
@@ -353,7 +379,7 @@ int blosc2_grok_native_encoder(
 
     // initialize compress parameters
     grk_codec* codec = nullptr;
-    auto *codec_params = (blosc2_grok_params *)cparams->codec_params;
+    auto *codec_params = (blosc2_htj2k_params *)cparams->codec_params;
     grk_cparameters *compressParams;
     grk_stream_params *streamParams;
 
@@ -367,9 +393,8 @@ int blosc2_grok_native_encoder(
     }
     if (is_htj2k_requested(compressParams)) {
         fprintf(stderr,
-                "[blosc2_grok] Native Grok HTJ2K is not enabled; configure "
-                "BLOSC2_GROK_HTJ2K_BACKEND (BLOSC2_GROK_PLUGIN_PATH is optional "
-                "for default installs), or set legacy BLOSC2_GROK_HTJ2K_REPLACEMENT_DIR\n");
+                "[blosc2_htj2k] HTJ2K encode parameters were passed to the native "
+                "J2K helper; use the plugin-only HTJ2K codec entry point instead\n");
         if (codec_params == nullptr) {
             free(streamParams);
         }
@@ -484,33 +509,41 @@ int beach_decoder(grk_codec * codec, int rc) {
     return rc;
 }
 
-// Blosc2 decoder entry point: inspect the codestream family first, then route
-// to the matching plugin family or native J2K fallback.
-int blosc2_grok_decoder(const uint8_t *input, int32_t input_len, uint8_t *output, int32_t output_len,
+// Blosc2 decoder entry point for the temporary HTJ2K codec.
+int blosc2_htj2k_decoder(const uint8_t *input, int32_t input_len, uint8_t *output, int32_t output_len,
                         uint8_t meta, blosc2_dparams *dparams, const void *chunk) {
     freeze_runtime_config();
-    const bool debug = std::getenv("BLOSC2_GROK_DEBUG") != nullptr;
+    const bool debug = std::getenv("BLOSC2_HTJ2K_DEBUG") != nullptr;
 
     CodecFamily family = detect_codestream_family(input, input_len);
     if (family == CodecFamily::UNKNOWN) {
         fprintf(stderr,
-                "[blosc2_grok] Could not identify JPEG2000 codestream family; "
+                "[blosc2_htj2k] Could not identify JPEG2000 codestream family; "
                 "refusing to guess a decoder backend\n");
         return -1;
     }
-    if (family == CodecFamily::HTJ2K) {
-        htj2k_codec_request_t request = make_htj2k_decode_request(meta, dparams, chunk);
-        return decode_htj2k_with_plugin(input, input_len, output, output_len, meta, dparams, chunk,
-                                        request, load_htj2k_replacement_plugin(), debug);
+    if (family == CodecFamily::J2K) {
+        fprintf(stderr,
+                "[blosc2_htj2k] J2K codestream was passed to the HTJ2K codec; "
+                "use the separate 'j2k' codec instead\n");
+        return -1;
     }
 
-    j2k_codec_request_t request = make_j2k_decode_request(meta, dparams, chunk);
-    return decode_j2k_with_plugin_or_native(input, input_len, output, output_len, meta, dparams, chunk,
-                                            request, load_j2k_replacement_plugin(), debug);
+    htj2k_codec_plugin_t *plugin = load_htj2k_replacement_plugin();
+    if (plugin == nullptr) {
+        fprintf(stderr,
+                "[blosc2_htj2k] HTJ2K decoding requires an HTJ2K backend plugin; "
+                "configure BLOSC2_HTJ2K_BACKEND or install a manifest selecting kakadu/openhtj2k\n");
+        return -1;
+    }
+
+    htj2k_codec_request_t request = make_htj2k_decode_request(meta, dparams, chunk);
+    return decode_htj2k_with_plugin(input, input_len, output, output_len, meta, dparams, chunk,
+                                    request, plugin, debug);
 }
 
 // Native Grok implementation of the Blosc2 decoder entry point.
-int blosc2_grok_native_decoder(const uint8_t *input, int32_t input_len, uint8_t *output, int32_t output_len,
+int blosc2_htj2k_native_decoder(const uint8_t *input, int32_t input_len, uint8_t *output, int32_t output_len,
                                uint8_t meta, blosc2_dparams *dparams, const void *chunk) {
     (void)meta;
     (void)dparams;
@@ -592,7 +625,7 @@ int blosc2_grok_native_decoder(const uint8_t *input, int32_t input_len, uint8_t 
 }
 
 // Release any loaded replacement backend and deinitialize Grok.
-void blosc2_grok_destroy() {
+void blosc2_htj2k_destroy() {
     unload_replacement_plugins();
     grk_deinitialize();
 }

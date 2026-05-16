@@ -1,9 +1,9 @@
 /*********************************************************************
- * Runtime replacement API for blosc2_grok HTJ2K backends.
+ * Runtime replacement API for blosc2_htj2k HTJ2K backends.
  *
  * A replacement backend is a shared library that exports a single
- * HTJ2K_CODEC_PLUGIN symbol.  blosc2_grok loads it at runtime when
- * BLOSC2_GROK_HTJ2K_REPLACEMENT_DIR points to the directory containing the
+ * HTJ2K_CODEC_PLUGIN symbol.  blosc2_htj2k loads it at runtime when
+ * BLOSC2_HTJ2K_HTJ2K_REPLACEMENT_DIR points to the directory containing the
  * shared library.  The ABI version and struct size are checked before any
  * function pointer is used, so incompatible plugins are rejected cleanly.
  *
@@ -12,8 +12,8 @@
  * License: GNU Affero General Public License v3.0 (see LICENSE.txt)
  *********************************************************************/
 
-#ifndef BLOSC2_GROK_HTJ2K_CODEC_API_H
-#define BLOSC2_GROK_HTJ2K_CODEC_API_H
+#ifndef BLOSC2_HTJ2K_HTJ2K_CODEC_API_H
+#define BLOSC2_HTJ2K_HTJ2K_CODEC_API_H
 
 #include <stdint.h>
 #include "blosc2.h"
@@ -27,7 +27,7 @@ extern "C" {
 #define HTJ2K_CODEC_REQUEST_FLAG_LOSSLESS 0x01u
 #define HTJ2K_CODEC_REQUEST_FLAG_LOSSY    0x02u
 
-/* Per-call capability request passed from blosc2_grok to HTJ2K backends.
+/* Per-call capability request passed from blosc2_htj2k to HTJ2K backends.
  *
  * This mirrors the J2K request shape but uses distinct names and a distinct
  * exported symbol, so a backend cannot accidentally be used for the wrong
@@ -100,4 +100,4 @@ typedef struct htj2k_codec_plugin_t {
 #define HTJ2K_CODEC_PLUGIN_EXPORT
 #endif
 
-#endif  // BLOSC2_GROK_HTJ2K_CODEC_API_H
+#endif  // BLOSC2_HTJ2K_HTJ2K_CODEC_API_H

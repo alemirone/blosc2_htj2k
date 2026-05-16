@@ -1,5 +1,5 @@
 ##############################################################################
-# blosc2_grok: Grok (JPEG2000 codec) plugin for Blosc2
+# blosc2_htj2k: Grok (JPEG2000 codec) plugin for Blosc2
 #
 # Copyright (c) 2023  The Blosc Development Team <blosc@blosc.org>
 # https://blosc.org
@@ -20,7 +20,10 @@ import numpy as np
 
 __version__ = "0.3.6.dev0"
 
-# On Windows, pre-load blosc2.dll before loading blosc2_grok.dll
+CODEC_NAME = "htj2k"
+CODEC_ID = 161
+
+# On Windows, pre-load blosc2.dll before loading blosc2_htj2k.dll
 if platform.system() == "Windows":
     try:
         import blosc2
@@ -218,15 +221,15 @@ class GrkMode(Enum):
 def get_libpath():
     system = platform.system()
     if system == "Linux":
-        candidates = ["libblosc2_grok.so"]
+        candidates = ["libblosc2_htj2k.so"]
     elif system == "Darwin":
-        candidates = ["libblosc2_grok.dylib", "libblosc2_grok.so"]
+        candidates = ["libblosc2_htj2k.dylib", "libblosc2_htj2k.so"]
     elif system == "Windows":
         candidates = [
-            "blosc2_grok.dll",
-            "libblosc2_grok.dll",
-            "blosc2_grok.pyd",
-            "libblosc2_grok.pyd",
+            "blosc2_htj2k.dll",
+            "libblosc2_htj2k.dll",
+            "blosc2_htj2k.pyd",
+            "libblosc2_htj2k.pyd",
         ]
     else:
         raise RuntimeError("Unsupported system: ", system)
@@ -238,11 +241,11 @@ def get_libpath():
             return os.path.abspath(libpath)
 
     if system == "Darwin":
-        for pattern in ("libblosc2_grok*.dylib", "libblosc2_grok*.so"):
+        for pattern in ("libblosc2_htj2k*.dylib", "libblosc2_htj2k*.so"):
             for alt_path in pkg_dir.glob(pattern):
                 return os.path.abspath(alt_path)
     if system == "Windows":
-        for alt_path in pkg_dir.glob("blosc2_grok*.pyd"):
+        for alt_path in pkg_dir.glob("blosc2_htj2k*.pyd"):
             return os.path.abspath(alt_path)
     return os.path.abspath(pkg_dir / candidates[0])
 
@@ -255,7 +258,7 @@ def _add_windows_blosc2_dll_dirs():
         return
     if not hasattr(os, "add_dll_directory"):
         return
-    debug = os.environ.get("BLOSC2_GROK_DEBUG_DLL") == "1"
+    debug = os.environ.get("BLOSC2_HTJ2K_DEBUG_DLL") == "1"
     site_dir = Path(__file__).resolve().parent.parent
     candidates = [
         site_dir / "bin",
@@ -264,7 +267,7 @@ def _add_windows_blosc2_dll_dirs():
         site_dir / "lib",
     ]
     if debug:
-        print("blosc2_grok: probing DLL dirs:", file=sys.stderr)
+        print("blosc2_htj2k: probing DLL dirs:", file=sys.stderr)
     for cand in candidates:
         if cand.is_dir():
             try:
@@ -283,7 +286,7 @@ _add_windows_blosc2_dll_dirs()
 libpath = get_libpath()
 if os.name == "posix":
     # HDF5's Blosc2 filter may discover this codec through dlopen() later in
-    # the same process.  Loading the codec globally makes `import blosc2_grok`
+    # the same process.  Loading the codec globally makes `import blosc2_htj2k`
     # a real preload step, so HDF5 and the backend plugins see the same codec
     # library and C-Blosc2 dependency.
     lib = ctypes.CDLL(libpath, mode=ctypes.RTLD_GLOBAL)
@@ -299,19 +302,20 @@ class _RuntimeConfig(ctypes.Structure):
     _fields_ = [
         ("struct_size", ctypes.c_uint32),
         ("plugin_path", ctypes.c_char_p),
-        ("j2k_backend", ctypes.c_char_p),
-        ("htj2k_backend", ctypes.c_char_p),
+        ("backend", ctypes.c_char_p),
     ]
 
 
-lib.blosc2_grok_configure.argtypes = [ctypes.POINTER(_RuntimeConfig)]
-lib.blosc2_grok_configure.restype = ctypes.c_int
-lib.blosc2_grok_list_plugins.argtypes = [ctypes.c_char_p, ctypes.c_size_t]
-lib.blosc2_grok_list_plugins.restype = ctypes.c_int
-lib.blosc2_grok_diagnose.argtypes = [ctypes.c_char_p, ctypes.c_size_t]
-lib.blosc2_grok_diagnose.restype = ctypes.c_int
-lib.blosc2_grok_last_error.argtypes = []
-lib.blosc2_grok_last_error.restype = ctypes.c_char_p
+lib.blosc2_htj2k_configure.argtypes = [ctypes.POINTER(_RuntimeConfig)]
+lib.blosc2_htj2k_configure.restype = ctypes.c_int
+lib.blosc2_htj2k_list_plugins.argtypes = [ctypes.c_char_p, ctypes.c_size_t]
+lib.blosc2_htj2k_list_plugins.restype = ctypes.c_int
+lib.blosc2_htj2k_diagnose.argtypes = [ctypes.c_char_p, ctypes.c_size_t]
+lib.blosc2_htj2k_diagnose.restype = ctypes.c_int
+lib.blosc2_htj2k_last_error.argtypes = []
+lib.blosc2_htj2k_last_error.restype = ctypes.c_char_p
+lib.blosc2_htj2k_register_codec.argtypes = []
+lib.blosc2_htj2k_register_codec.restype = ctypes.c_int
 
 
 def _optional_bytes(value):
@@ -321,52 +325,69 @@ def _optional_bytes(value):
 
 
 def last_error():
-    value = lib.blosc2_grok_last_error()
+    value = lib.blosc2_htj2k_last_error()
     return value.decode("utf-8") if value else ""
 
 
-def configure(plugin_path=None, j2k_backend=None, htj2k_backend=None):
+def register_codec():
+    """Register the temporary Blosc2 dynamic codec id for HTJ2K."""
+    try:
+        import blosc2
+        blosc2.register_codec(CODEC_NAME, CODEC_ID)
+    except Exception as exc:
+        if "already" not in str(exc).lower() and "registered" not in str(exc).lower():
+            raise
+
+    rc = lib.blosc2_htj2k_register_codec()
+    if rc != 0:
+        raise RuntimeError(last_error() or "failed to register blosc2_htj2k codec")
+
+
+def configure(plugin_path=None, backend=None, htj2k_backend=None):
     """Configure runtime plugin loading before first codec use.
 
     If ``plugin_path`` is omitted, the runtime searches the default ``plugins``
-    directory installed next to ``libblosc2_grok``.
+    directory installed next to ``libblosc2_htj2k``.
     """
+    if backend is not None and htj2k_backend is not None and backend != htj2k_backend:
+        raise ValueError("backend and htj2k_backend disagree")
+    if backend is None:
+        backend = htj2k_backend
     cfg = _RuntimeConfig()
     cfg.struct_size = ctypes.sizeof(_RuntimeConfig)
     cfg.plugin_path = _optional_bytes(plugin_path)
-    cfg.j2k_backend = _optional_bytes(j2k_backend)
-    cfg.htj2k_backend = _optional_bytes(htj2k_backend)
-    rc = lib.blosc2_grok_configure(ctypes.byref(cfg))
+    cfg.backend = _optional_bytes(backend)
+    rc = lib.blosc2_htj2k_configure(ctypes.byref(cfg))
     if rc != 0:
-        raise RuntimeError(last_error() or "blosc2_grok_configure failed")
+        raise RuntimeError(last_error() or "blosc2_htj2k_configure failed")
 
 
 def _read_json_from_c(func):
     needed = func(None, 0)
     if needed < 0:
-        raise RuntimeError(last_error() or "blosc2_grok runtime query failed")
+        raise RuntimeError(last_error() or "blosc2_htj2k runtime query failed")
     buffer = ctypes.create_string_buffer(needed + 1)
     actual = func(buffer, len(buffer))
     if actual < 0:
-        raise RuntimeError(last_error() or "blosc2_grok runtime query failed")
+        raise RuntimeError(last_error() or "blosc2_htj2k runtime query failed")
     if actual >= len(buffer):
         buffer = ctypes.create_string_buffer(actual + 1)
         actual = func(buffer, len(buffer))
         if actual < 0:
-            raise RuntimeError(last_error() or "blosc2_grok runtime query failed")
+            raise RuntimeError(last_error() or "blosc2_htj2k runtime query failed")
     return json.loads(buffer.value.decode("utf-8"))
 
 
 def list_plugins():
-    return _read_json_from_c(lib.blosc2_grok_list_plugins)
+    return _read_json_from_c(lib.blosc2_htj2k_list_plugins)
 
 
 def diagnose():
-    return _read_json_from_c(lib.blosc2_grok_diagnose)
+    return _read_json_from_c(lib.blosc2_htj2k_diagnose)
 
 
 def available_backends():
-    result = {"j2k": [], "htj2k": []}
+    result = {"htj2k": []}
     for plugin in list_plugins().get("plugins", []):
         if plugin.get("loadable") and plugin.get("abi_valid"):
             family = plugin.get("family")
@@ -391,33 +412,28 @@ def _selftest_script(family, backend, plugin_root):
     clear_env = """
 import os
 for name in (
-    "BLOSC2_GROK_REPLACEMENT_DIR",
-    "BLOSC2_GROK_HTJ2K_REPLACEMENT_DIR",
-    "BLOSC2_GROK_PLUGIN_PATH",
-    "BLOSC2_GROK_J2K_BACKEND",
-    "BLOSC2_GROK_HTJ2K_BACKEND",
+    "BLOSC2_HTJ2K_REPLACEMENT_DIR",
+    "BLOSC2_HTJ2K_PLUGIN_PATH",
+    "BLOSC2_HTJ2K_BACKEND",
 ):
     os.environ.pop(name, None)
 """
     configure_call = ""
-    if family == "j2k" and backend != "native":
-        configure_call = f"blosc2_grok.configure(plugin_path={plugin_root!r}, j2k_backend={backend!r})"
-    elif family == "htj2k":
-        configure_call = f"blosc2_grok.configure(plugin_path={plugin_root!r}, htj2k_backend={backend!r})"
+    if family == "htj2k":
+        configure_call = f"blosc2_htj2k.configure(plugin_path={plugin_root!r}, backend={backend!r})"
 
-    ht_mode = "blosc2_grok.set_params_defaults(mode=blosc2_grok.GrkMode.HT)" if family == "htj2k" else ""
     return f"""
 import blosc2
-import blosc2_grok
+import blosc2_htj2k
 import numpy as np
 
 {clear_env}
+blosc2_htj2k.register_codec()
 {configure_call}
-{ht_mode}
 
 data = (np.arange(64 * 64, dtype=np.uint16).reshape(64, 64) % 4096)
 cparams = {{
-    "codec": blosc2.Codec.GROK,
+    "codec": blosc2_htj2k.CODEC_ID,
     "filters": [],
     "splitmode": blosc2.SplitMode.NEVER_SPLIT,
 }}
@@ -440,7 +456,7 @@ def selftest(backends="available"):
 
     available = [
         p for p in plugins
-        if p.get("loadable") and p.get("abi_valid") and not (p.get("family") == "htj2k" and p.get("backend") == "native")
+        if p.get("family") == "htj2k" and p.get("loadable") and p.get("abi_valid")
     ]
     if backends != "available":
         requested = set(backends)
@@ -481,7 +497,7 @@ def selftest(backends="available"):
 def _main(argv=None):
     import argparse
 
-    parser = argparse.ArgumentParser(prog="python -m blosc2_grok")
+    parser = argparse.ArgumentParser(prog="python -m blosc2_htj2k")
     parser.add_argument("--list-plugins", action="store_true")
     parser.add_argument("--diagnose", action="store_true")
     parser.add_argument("--selftest", action="store_true")
@@ -497,16 +513,19 @@ def _main(argv=None):
         print_libpath()
 
 
+register_codec()
+
+
 # Deinitialize grok when exiting
 @atexit.register
 def destroy():
-    lib.blosc2_grok_destroy()
+    lib.blosc2_htj2k_destroy()
 
 
 params_defaults = {
     'tile_size': (0, 0),
     'tile_offset': (0, 0),
-    # 'numlayers': 0, # blosc2_grok C func set_params will still receive this param
+    # 'numlayers': 0, # blosc2_htj2k C func set_params will still receive this param
     'quality_mode': None,
     'quality_layers': np.zeros(0, dtype=np.float64),
     'numgbits': 2,
@@ -549,10 +568,10 @@ def set_params_defaults(**kwargs):
     Warning
     -------
     If you first call this with 'cod_format' different from default
-    >>> blosc2_grok.set_default_params({'cod_format': blosc2_grok.GrkFileFmt.GRK_FMT_J2K})
+    >>> blosc2_htj2k.set_default_params({'cod_format': blosc2_htj2k.GrkFileFmt.GRK_FMT_J2K})
     and then call it again with some other parameters:
-    >>> blosc2_grok.set_default_params({'irreversible': True})
-    the default for 'cod_format' will be restored to the original blosc2_grok.GrkFileFmt.GRK_FMT_JP2 in grok.
+    >>> blosc2_htj2k.set_default_params({'irreversible': True})
+    the default for 'cod_format' will be restored to the original blosc2_htj2k.GrkFileFmt.GRK_FMT_JP2 in grok.
     """
     # Check arguments
     not_supported = [k for k in kwargs.keys() if k not in params_defaults]
@@ -590,7 +609,7 @@ def set_params_defaults(**kwargs):
     if args[9] == GrkMode.HT and args[3] is not None:
         raise ValueError("High throughput mode with quality mode activated is not currently supported.")
 
-    lib.blosc2_grok_set_default_params.argtypes = ([np.ctypeslib.ndpointer(dtype=np.int64)] * 2 +
+    lib.blosc2_htj2k_set_default_params.argtypes = ([np.ctypeslib.ndpointer(dtype=np.int64)] * 2 +
                                                    [ctypes.c_int] + [ctypes.c_char_p] + [np.ctypeslib.ndpointer(dtype=np.float64)] +
                                                    [ctypes.c_int] + [ctypes.c_char_p] +
                                                    [ctypes.c_int] + [np.ctypeslib.ndpointer(dtype=np.int64)] + [ctypes.c_int] +
@@ -601,7 +620,7 @@ def set_params_defaults(**kwargs):
                                                    [ctypes.c_int] * 5 + [ctypes.c_bool] +
                                                    [ctypes.c_int] * 5 + [ctypes.c_bool])
 
-    lib.blosc2_grok_set_default_params(*args)
+    lib.blosc2_htj2k_set_default_params(*args)
 
 
 if __name__ == "__main__":

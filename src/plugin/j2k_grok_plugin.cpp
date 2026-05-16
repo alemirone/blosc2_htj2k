@@ -1,5 +1,5 @@
 /*********************************************************************
- * Grok replacement backend for blosc2_grok.
+ * Grok replacement backend for blosc2_htj2k.
  *
  * This backend calls the native Grok encoder/decoder and is installed as a
  * small reference plugin.  It exercises the runtime replacement path without
@@ -10,8 +10,8 @@
  **********************************************************************/
 
 #include "j2k_codec_api.h"
-#include "blosc2_grok.h"
-#include "blosc2_grok_public.h"
+#include "blosc2_htj2k.h"
+#include "blosc2_htj2k_public.h"
 
 // Reference backend capability check.  It mirrors the native Grok J2K path and
 // refuses sample layouts outside the conservative image cases used by this
@@ -42,7 +42,7 @@ static int grok_plugin_encode(
     const void* chunk,
     const j2k_codec_request_t* /*request*/
 ) {
-    return blosc2_grok_native_encoder(input, input_len, output, output_len, meta, cparams, chunk);
+    return blosc2_htj2k_native_encoder(input, input_len, output, output_len, meta, cparams, chunk);
 }
 
 // Reference backend decoder: keep the replacement path testable without any
@@ -57,7 +57,7 @@ static int grok_plugin_decode(
     const void *chunk,
     const j2k_codec_request_t* /*request*/
 ) {
-    return blosc2_grok_native_decoder(input, input_len, output, output_len, meta, dparams, chunk);
+    return blosc2_htj2k_native_decoder(input, input_len, output, output_len, meta, dparams, chunk);
 }
 
 extern "C" {

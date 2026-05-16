@@ -5,7 +5,7 @@
 # License: GNU Affero General Public License v3.0 (see LICENSE.txt)
 
 cmake_minimum_required(VERSION 3.20)
-project(blosc2_grok LANGUAGES C CXX)
+project(blosc2_htj2k LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 
 # Grok needs MacOS 11.0 or later
@@ -40,7 +40,7 @@ execute_process(
     RESULT_VARIABLE BLOSC2_IMPORT_RESULT
 )
 
-# To compile blosc2_grok, we need the include files (and for macOS and Windows, the actual lib)
+# To compile blosc2_htj2k, we need the include files (and for macOS and Windows, the actual lib)
 if(BLOSC2_IMPORT_RESULT EQUAL 0 AND EXISTS "${BLOSC2_PACKAGE_DIR}")
     message(STATUS "Found blosc2 package at: ${BLOSC2_PACKAGE_DIR}")
 
@@ -78,6 +78,6 @@ else()
 endif()
 
 # ============================================================
-# blosc2_grok plugin source files
+# blosc2_htj2k plugin source files
 # ============================================================
 add_subdirectory(src)
