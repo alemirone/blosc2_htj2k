@@ -66,10 +66,10 @@ blosc2_htj2k/
 
 Backend capabilities:
 
-| Backend | Built when | HTJ2K | `uint8` | `uint16` | Redistributable |
-| --- | --- | --- | --- | --- | --- |
-| `plugins/htj2k/openhtj2k` | OpenHTJ2K PR190-style API found or built | yes | yes | yes | yes |
-| `plugins/htj2k/kakadu` | Kakadu found | yes | yes | yes | no |
+| Backend | Built when | HTJ2K | `uint8` | `uint16` | `uint32` | Redistributable |
+| --- | --- | --- | --- | --- | --- | --- |
+| `plugins/htj2k/openhtj2k` | OpenHTJ2K PR190-style API found or built | yes | yes | yes | no | yes |
+| `plugins/htj2k/kakadu` | Kakadu found | yes | yes | yes | yes | no |
 
 Kakadu is optional and is not redistributed by this project.
 
@@ -359,6 +359,7 @@ The current tests cover:
 - codec registration with temporary id `161`;
 - lossless HTJ2K roundtrip;
 - lossy HTJ2K roundtrip through every available HTJ2K backend plugin;
+- optional Kakadu `uint32` lossless roundtrip when Kakadu is installed;
 - command-line diagnostics.
 
 ## Limitations
@@ -369,7 +370,11 @@ The current tests cover:
 - Kakadu is optional and not redistributable.
 - OpenHTJ2K is the redistributable open-source backend, currently based on the
   PR190-style `uint16` API.
-- The maximum datatype precision is 16 bits.
+- OpenHTJ2K currently handles the PR190-style `uint16` path; the optional
+  Kakadu backend also supports `uint32`.
+- For Kakadu `uint32`, the default wavelet decomposition is capped at
+  `Clevels=3` for robust small-chunk operation. Advanced users can override it
+  with `BLOSC2_HTJ2K_CLEVELS` or `BLOSC2_HTJ2K_KAKADU_PARAMS`.
 - The minimum practical image payload is around 256 bytes.
 
 ## Next Steps Toward An Official Plugin

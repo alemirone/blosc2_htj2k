@@ -309,6 +309,23 @@ void apply_kakadu_rate_defaults(siz_params &siz, int32_t precision, bool rate_co
     }
 }
 
+// Kakadu accepts 32-bit integer stripe buffers, but high default wavelet
+// decomposition levels are fragile for some small/non-dyadic chunks.  Keep a
+// conservative default while allowing explicit caller overrides.
+void apply_kakadu_precision_defaults(siz_params &siz, int32_t precision) {
+    const bool debug = std::getenv("BLOSC2_HTJ2K_DEBUG") != nullptr;
+    const char *clevels_s = std::getenv("BLOSC2_HTJ2K_CLEVELS");
+    if (precision == 32 &&
+        (clevels_s == nullptr || *clevels_s == '\0') &&
+        !kakadu_extra_has_param("clevels")) {
+        bool ok = siz.parse_string("Clevels=3");
+        if (debug) {
+            fprintf(stderr, "[blosc2_htj2k] Kakadu uint32 default: Clevels=3 (%s)\n",
+                    ok ? "ok" : "FAILED");
+        }
+    }
+}
+
 // Identify JP2 containers; otherwise Kakadu decodes the chunk as raw codestream.
 bool has_jp2_signature(const uint8_t *data, int32_t len) {
     if (data == nullptr || len < 12) {
@@ -427,7 +444,7 @@ bool set_siz_params(siz_params &siz, int64_t width, int64_t height,
 
 // Shared Kakadu capability check for the transparent J2K/HTJ2K chunk layout.
 static int kakadu_supports_layout(uint32_t precision_bits, uint32_t num_components) {
-    if (precision_bits != 0 && !(precision_bits == 8 || precision_bits == 16)) {
+    if (precision_bits != 0 && !(precision_bits == 8 || precision_bits == 16 || precision_bits == 32)) {
         return 0;
     }
     if (num_components != 0 && !(num_components == 1 || num_components == 3)) {
@@ -486,9 +503,9 @@ int kakadu_encode(
     if (!((num_comps == 1) || (num_comps == 3))) {
         return -1;
     }
-    if (!(typesize == 1 || typesize == 2)) {
+    if (!(typesize == 1 || typesize == 2 || typesize == 4)) {
         if (debug) {
-            fprintf(stderr, "[blosc2_htj2k] Kakadu encode error: unsupported typesize=%d (only 1 and 2 are supported)\n",
+            fprintf(stderr, "[blosc2_htj2k] Kakadu encode error: unsupported typesize=%d (only 1, 2 and 4 are supported)\n",
                     typesize);
         }
         return -1;
@@ -550,6 +567,7 @@ int kakadu_encode(
         }
 
         apply_kakadu_rate_defaults(*codestream.access_siz(), precision, meta != 0);
+        apply_kakadu_precision_defaults(*codestream.access_siz(), precision);
         apply_kakadu_overrides(*codestream.access_siz());
         codestream.access_siz()->finalize_all();
 
@@ -606,6 +624,21 @@ int kakadu_encode(
             }
             needs_more = compressor.push_stripe(stripe_bufs.data(), stripe_heights.data(),
                                                 sample_gaps.data(), row_gaps.data(),
+                                                precisions.data(), is_signed.get());
+        } else if (typesize == 4) {
+            auto *input32 = reinterpret_cast<const kdu_uint32*>(input);
+            // Kakadu's 32-bit push_stripe overload is typed as kdu_int32*,
+            // but with is_signed=false the buffer is explicitly interpreted
+            // as unsigned 32-bit input.  The single-buffer overload matches
+            // the contiguous sample-interleaved Blosc2 chunk layout.
+            kdu_int32 *stripe_buf =
+                reinterpret_cast<kdu_int32*>(const_cast<kdu_uint32*>(input32));
+            std::unique_ptr<bool[]> is_signed(new bool[num_comps]);
+            for (int c = 0; c < num_comps; ++c) {
+                is_signed[c] = false;
+            }
+            needs_more = compressor.push_stripe(stripe_buf, stripe_heights.data(),
+                                                nullptr, nullptr, nullptr,
                                                 precisions.data(), is_signed.get());
         }
         if (debug) {
@@ -714,16 +747,16 @@ int kakadu_decode(
         if (debug) {
             fprintf(stderr, "[blosc2_htj2k] Kakadu decoder: codestream precision=%d bits\n", precision);
         }
-        // The transparent codec path currently maps Blosc chunks back to uint8/uint16.
-        if (!(precision == 8 || precision == 16)) {
+        // The transparent codec path maps Blosc chunks back to uint8/uint16/uint32.
+        if (!(precision == 8 || precision == 16 || precision == 32)) {
             if (debug) {
-                fprintf(stderr, "[blosc2_htj2k] Kakadu: unsupported precision=%d (only 8 and 16 supported)\n", precision);
+                fprintf(stderr, "[blosc2_htj2k] Kakadu: unsupported precision=%d (only 8, 16 and 32 supported)\n", precision);
             }
             codestream.destroy();
             return -1;
         }
 
-        int typesize = (precision <= 8) ? 1 : 2;
+        int typesize = (precision <= 8) ? 1 : ((precision <= 16) ? 2 : 4);
         int64_t expected = static_cast<int64_t>(width) *
                            static_cast<int64_t>(height) *
                            static_cast<int64_t>(num_comps) *
@@ -765,7 +798,7 @@ int kakadu_decode(
                     max_stripe_height);
         }
         std::unique_ptr<bool[]> is_signed;
-        if (typesize == 2) {
+        if (typesize == 2 || typesize == 4) {
             is_signed.reset(new bool[num_comps]);
             for (int c = 0; c < num_comps; ++c) {
                 is_signed[c] = false;
@@ -773,10 +806,13 @@ int kakadu_decode(
         }
         std::vector<uint8_t> decoded8;
         std::vector<kdu_uint16> decoded16;
+        std::vector<kdu_uint32> decoded32;
         if (typesize == 1) {
             decoded8.resize(static_cast<size_t>(expected));
         } else if (typesize == 2) {
             decoded16.resize(static_cast<size_t>(expected / typesize));
+        } else if (typesize == 4) {
+            decoded32.resize(static_cast<size_t>(expected / typesize));
         }
 
         int rows_done = 0;
@@ -800,6 +836,18 @@ int kakadu_decode(
                 // kdu_int16*, but with is_signed=false the buffer is
                 // explicitly used as unsigned 16-bit storage.
                 kdu_int16 *stripe_output = reinterpret_cast<kdu_int16*>(decoded16.data()) +
+                    static_cast<int64_t>(rows_done) * width * num_comps;
+                needs_more = decompressor.pull_stripe(stripe_output, stripe_heights.data(),
+                                                       nullptr, nullptr, nullptr,
+                                                       precisions.data(),
+                                                       (const bool*)is_signed.get());
+            } else if (typesize == 4) {
+                // Kakadu's 32-bit pull_stripe overload is typed as
+                // kdu_int32*, but with is_signed=false the buffer is
+                // explicitly used as unsigned 32-bit storage.  The
+                // single-buffer overload matches the contiguous
+                // sample-interleaved Blosc2 chunk layout.
+                kdu_int32 *stripe_output = reinterpret_cast<kdu_int32*>(decoded32.data()) +
                     static_cast<int64_t>(rows_done) * width * num_comps;
                 needs_more = decompressor.pull_stripe(stripe_output, stripe_heights.data(),
                                                        nullptr, nullptr, nullptr,
@@ -836,6 +884,8 @@ int kakadu_decode(
             std::memcpy(output, decoded8.data(), static_cast<size_t>(expected));
         } else if (typesize == 2) {
             std::memcpy(output, decoded16.data(), static_cast<size_t>(expected));
+        } else if (typesize == 4) {
+            std::memcpy(output, decoded32.data(), static_cast<size_t>(expected));
         }
         codestream.destroy();
         if (debug) {
