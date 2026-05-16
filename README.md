@@ -491,8 +491,6 @@ See the [examples](examples/) directory.
 
 ## Thanks
 
-Thanks to Marta Iborra, from the Blosc Development Team, for doing most of the
-job in making the original `blosc2_grok` plugin possible, and J. David Ibanez
-and Francesc Alted for the initial contributions.  Also, thanks to Aaron Boxer,
-the original author of the [Grok library](https://github.com/GrokImageCompression/grok),
-for his help in making this interaction possible.
+Thanks to Francesc Alted for the guidance on the Blosc2 plugin direction,
+including the suggestion to split J2K and HTJ2K into separate codecs.  This work
+builds on the original `blosc2_grok` plugin and on the Grok JPEG2000 library.
