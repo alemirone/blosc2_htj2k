@@ -364,8 +364,9 @@ discoverable:
 export HDF5_PLUGIN_PATH="$(python -c 'import hdf5plugin; print(hdf5plugin.PLUGIN_PATH)')"
 ```
 
-For Python processes, importing `blosc2_htj2k` registers the temporary codec id
-and loads the codec library with global visibility:
+For Python processes that use the Python API directly, importing
+`blosc2_htj2k` can register the temporary codec id and load the codec library
+with global visibility:
 
 ```python
 import hdf5plugin
@@ -373,6 +374,39 @@ import blosc2_htj2k
 import h5py
 
 blosc2_htj2k.configure(backend="openhtj2k")
+```
+
+This is enough for Python code that calls the `blosc2_htj2k` registration path
+before compression/decompression.  It is not always enough for a fully
+transparent HDF5-only path, because the HDF5 Blosc2 filter may use a separate
+Blosc2 library instance.  In that case the filter can find Blosc2 and the HDF5
+plugin, but codec id `161` is still absent from the Blosc2 codec registry.
+
+`LD_LIBRARY_PATH` only makes shared libraries discoverable.  `HDF5_PLUGIN_PATH`
+only makes the HDF5 Blosc2 filter discoverable.  Neither one registers the
+temporary codec id in Blosc2.  During the temporary-id phase, `LD_PRELOAD` is
+the robust way to register codec id `161` before HDF5 starts using Blosc2.
+
+Transparent HDF5 example with `h5py` and `hdf5plugin`:
+
+```bash
+export HTJ2K_PACKAGE=/path/to/site-packages/blosc2_htj2k
+export BLOSC2_PACKAGE=/path/to/site-packages/blosc2
+
+export HDF5_PLUGIN_PATH=/path/to/hdf5plugin/plugins
+export LD_LIBRARY_PATH="${HTJ2K_PACKAGE}:${BLOSC2_PACKAGE}/lib:${LD_LIBRARY_PATH:-}"
+export LD_PRELOAD="${HTJ2K_PACKAGE}/libblosc2_jpeg2000_bootstrap.so${LD_PRELOAD:+:${LD_PRELOAD}}"
+
+export BLOSC2_HTJ2K_BACKEND=openhtj2k
+
+python my_hdf5_reader_or_writer.py
+```
+
+If the Kakadu backend is selected, add the Kakadu library directory as well:
+
+```bash
+export LD_LIBRARY_PATH=/path/to/kakadu/lib:${LD_LIBRARY_PATH}
+export BLOSC2_HTJ2K_BACKEND=kakadu
 ```
 
 For C/C++ applications, the explicit path is:
@@ -410,7 +444,10 @@ htj2k -> 161
 ```
 
 This is only a deployment bridge for the temporary-id phase.  With official
-c-blosc2 codec ids, this should become simpler.
+c-blosc2 codec ids, this should become simpler.  Until then, files written with
+codec id `161` need either explicit registration in the application or this
+bootstrap preload mechanism before they can be read through a transparent HDF5
+path.
 
 ## Current Tests
 

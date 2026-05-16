@@ -281,6 +281,38 @@ bool parse_b2nd_meta(const uint8_t *content, int32_t content_len, B2ndLayout &la
     return true;
 }
 
+bool read_schunk_block_layout(blosc2_cparams *cparams, B2ndLayout &layout) {
+    if (cparams == nullptr || cparams->schunk == nullptr) {
+        return false;
+    }
+    const auto *schunk = static_cast<const blosc2_schunk *>(cparams->schunk);
+    if (schunk->typesize <= 0 ||
+        schunk->ndim <= 0 ||
+        schunk->ndim > BLOSC2_HTJ2K_LAYOUT_MAX_DIM ||
+        schunk->blockshape == nullptr) {
+        return false;
+    }
+
+    B2ndLayout candidate;
+    candidate.ndim = schunk->ndim;
+    candidate.typesize = schunk->typesize;
+    // HDF5/libh5blosc2 can call codecs with raw chunks and no B2ND
+    // metalayer.  In that path it still stores the HDF5 chunk geometry in
+    // schunk->blockshape.  The logical array shape is not needed by this
+    // codec, so use the chunk/block geometry for all layout fields.
+    for (int i = 0; i < candidate.ndim; ++i) {
+        int64_t v = schunk->blockshape[i];
+        if (v <= 0 || v > (std::numeric_limits<int32_t>::max)()) {
+            return false;
+        }
+        candidate.shape[i] = v;
+        candidate.chunkshape[i] = static_cast<int32_t>(v);
+        candidate.blockshape[i] = static_cast<int32_t>(v);
+    }
+    layout = candidate;
+    return true;
+}
+
 }  // namespace
 
 bool read_b2nd_layout(blosc2_cparams *cparams, B2ndLayout &layout) {
@@ -292,13 +324,13 @@ bool read_b2nd_layout(blosc2_cparams *cparams, B2ndLayout &layout) {
     int32_t content_len = 0;
     if (blosc2_meta_get((blosc2_schunk *)cparams->schunk, "b2nd",
                         &content, &content_len) < 0) {
-        return false;
+        return read_schunk_block_layout(cparams, layout);
     }
 
     bool ok = parse_b2nd_meta(content, content_len, layout);
     free(content);
     if (!ok) {
-        return false;
+        return read_schunk_block_layout(cparams, layout);
     }
     layout.typesize = static_cast<int32_t>(((blosc2_schunk *)cparams->schunk)->typesize);
     return layout.typesize > 0;

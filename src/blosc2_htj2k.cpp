@@ -368,12 +368,17 @@ int blosc2_htj2k_encoder(
     grk_cparameters *compress_params = current_compress_params(cparams);
 
     B2ndLayout layout;
-    if (read_b2nd_layout(cparams, layout) && is_float_dtype(layout)) {
+    const bool has_layout = read_b2nd_layout(cparams, layout);
+    FloatRuntimeConfig float_config = resolved_float_config();
+    const bool configured_float32 = has_layout && layout.typesize == 4 && float_config.enabled;
+    if (configured_float32 && !is_float_dtype(layout)) {
+        layout.dtype = "float32";
+    }
+    if (has_layout && (is_float_dtype(layout) || configured_float32)) {
         if (!is_float32_dtype(layout)) {
             fprintf(stderr, "[blosc2_htj2k] float mode v1 only supports little-endian/native float32 chunks\n");
             return -1;
         }
-        FloatRuntimeConfig float_config = resolved_float_config();
         QuantizedFloatChunk quantized;
         std::string error;
         const bool inner_lossy = meta != 0 || (compress_params && compress_params->irreversible);

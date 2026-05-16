@@ -135,7 +135,7 @@ bool quantize_float32_chunk(const uint8_t *input,
         return false;
     }
     if (!is_float32_dtype(layout)) {
-        error = "float mode v1 only supports little-endian/native float32 B2ND chunks";
+        error = "float mode v1 only supports little-endian/native float32 chunks";
         return false;
     }
     if (input == nullptr || input_len <= 0 || (input_len % 4) != 0) {
