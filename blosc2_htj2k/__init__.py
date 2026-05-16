@@ -303,6 +303,11 @@ class _RuntimeConfig(ctypes.Structure):
         ("struct_size", ctypes.c_uint32),
         ("plugin_path", ctypes.c_char_p),
         ("backend", ctypes.c_char_p),
+        ("float_flags", ctypes.c_uint32),
+        ("float_quant_bits", ctypes.c_uint32),
+        ("float_clamp_min", ctypes.c_double),
+        ("float_clamp_max", ctypes.c_double),
+        ("float_nan_policy", ctypes.c_uint32),
     ]
 
 
@@ -343,7 +348,24 @@ def register_codec():
         raise RuntimeError(last_error() or "failed to register blosc2_htj2k codec")
 
 
-def configure(plugin_path=None, backend=None, htj2k_backend=None):
+def _parse_float_mode(value):
+    if value is None:
+        return 0, 0
+    text = str(value).lower()
+    if text in {"off", "0", "false", "disable", "disabled"}:
+        return 1, 0
+    if text in {"8", "uint8", "u8"}:
+        return 1, 8
+    if text in {"16", "uint16", "u16"}:
+        return 1, 16
+    if text in {"32", "uint32", "u32"}:
+        return 1, 32
+    raise ValueError("float_mode must be one of off, uint8, uint16 or uint32")
+
+
+def configure(plugin_path=None, backend=None, htj2k_backend=None,
+              float_mode=None, float_clamp_min=None, float_clamp_max=None,
+              float_nan_policy="fail"):
     """Configure runtime plugin loading before first codec use.
 
     If ``plugin_path`` is omitted, the runtime searches the default ``plugins``
@@ -353,10 +375,26 @@ def configure(plugin_path=None, backend=None, htj2k_backend=None):
         raise ValueError("backend and htj2k_backend disagree")
     if backend is None:
         backend = htj2k_backend
+    float_config_set, float_quant_bits = _parse_float_mode(float_mode)
+    if float_nan_policy != "fail":
+        raise ValueError("float_nan_policy='fail' is the only policy supported in v1")
+    if (float_clamp_min is not None or float_clamp_max is not None) and not float_config_set:
+        raise ValueError("float clamps require float_mode to be set")
     cfg = _RuntimeConfig()
     cfg.struct_size = ctypes.sizeof(_RuntimeConfig)
     cfg.plugin_path = _optional_bytes(plugin_path)
     cfg.backend = _optional_bytes(backend)
+    cfg.float_flags = 0
+    if float_config_set:
+        cfg.float_flags |= 0x01
+        cfg.float_quant_bits = float_quant_bits
+    if float_clamp_min is not None:
+        cfg.float_flags |= 0x02
+        cfg.float_clamp_min = float(float_clamp_min)
+    if float_clamp_max is not None:
+        cfg.float_flags |= 0x04
+        cfg.float_clamp_max = float(float_clamp_max)
+    cfg.float_nan_policy = 0
     rc = lib.blosc2_htj2k_configure(ctypes.byref(cfg))
     if rc != 0:
         raise RuntimeError(last_error() or "blosc2_htj2k_configure failed")

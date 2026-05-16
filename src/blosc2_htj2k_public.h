@@ -34,6 +34,10 @@ extern "C" {
 #include "grok.h"
 
 #define BLOSC2_HTJ2K_TEMP_CODEC_ID 161
+#define BLOSC2_HTJ2K_FLOAT_CONFIG_SET     0x01u
+#define BLOSC2_HTJ2K_FLOAT_CLAMP_MIN_SET  0x02u
+#define BLOSC2_HTJ2K_FLOAT_CLAMP_MAX_SET  0x04u
+#define BLOSC2_HTJ2K_FLOAT_NAN_POLICY_FAIL 0u
 
 typedef struct blosc2_htj2k_runtime_config {
     uint32_t struct_size;
@@ -43,6 +47,11 @@ typedef struct blosc2_htj2k_runtime_config {
      */
     const char *plugin_path;
     const char *backend;
+    uint32_t float_flags;
+    uint32_t float_quant_bits;
+    double float_clamp_min;
+    double float_clamp_max;
+    uint32_t float_nan_policy;
 } blosc2_htj2k_runtime_config;
 
 

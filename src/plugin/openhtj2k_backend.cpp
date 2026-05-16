@@ -154,6 +154,12 @@ extern "C" int blosc2_openhtj2k_encoder(
     if (!load_b2nd_info(cparams, dim_x, dim_y, num_comps, typesize)) {
         return -1;
     }
+    if (request != nullptr && request->precision_bits != 0) {
+        if (!(request->precision_bits == 8 || request->precision_bits == 16)) {
+            return -1;
+        }
+        typesize = static_cast<int32_t>(request->precision_bits / 8);
+    }
     if (!((num_comps == 1) || (num_comps == 3)) || !(typesize == 1 || typesize == 2)) {
         return -1;
     }

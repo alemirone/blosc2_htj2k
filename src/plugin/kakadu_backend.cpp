@@ -463,7 +463,8 @@ int kakadu_encode(
     uint8_t meta,
     blosc2_cparams* cparams,
     const void* /*chunk*/,
-    bool htj2k
+    bool htj2k,
+    uint32_t request_precision_bits
 ) {
     const bool debug = std::getenv("BLOSC2_HTJ2K_DEBUG") != nullptr;
     ensure_kakadu_handlers(debug);
@@ -511,6 +512,12 @@ int kakadu_encode(
         return -1;
     }
 
+    if (request_precision_bits != 0) {
+        if (!(request_precision_bits == 8 || request_precision_bits == 16 || request_precision_bits == 32)) {
+            return -1;
+        }
+        typesize = static_cast<int32_t>(request_precision_bits / 8);
+    }
     const int precision = typesize * 8;
     const int64_t expected_len = dim_x * dim_y * num_comps * typesize;
     if (debug) {
@@ -922,9 +929,11 @@ extern "C" int blosc2_kakadu_j2k_encoder(
     uint8_t meta,
     blosc2_cparams* cparams,
     const void* chunk,
-    const j2k_codec_request_t * /*request*/
+    const j2k_codec_request_t *request
 ) {
-    return kakadu_encode(input, input_len, output, output_len, meta, cparams, chunk, false);
+    uint32_t precision_bits = request ? request->precision_bits : 0;
+    return kakadu_encode(input, input_len, output, output_len, meta, cparams, chunk,
+                         false, precision_bits);
 }
 
 // J2K plugin decoder entry point.
@@ -958,9 +967,11 @@ extern "C" int blosc2_kakadu_htj2k_encoder(
     uint8_t meta,
     blosc2_cparams* cparams,
     const void* chunk,
-    const htj2k_codec_request_t * /*request*/
+    const htj2k_codec_request_t *request
 ) {
-    return kakadu_encode(input, input_len, output, output_len, meta, cparams, chunk, true);
+    uint32_t precision_bits = request ? request->precision_bits : 0;
+    return kakadu_encode(input, input_len, output, output_len, meta, cparams, chunk,
+                         true, precision_bits);
 }
 
 // HTJ2K plugin decoder entry point.

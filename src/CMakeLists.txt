@@ -47,6 +47,7 @@ set(BLOSC2_HTJ2K_CORE_SOURCES
     blosc2_htj2k.cpp
     codec_requests.cpp
     codestream_detector.cpp
+    float_quantization.cpp
     jpeg2000_codec_paths.cpp
     plugin_loader.cpp
     runtime_config.cpp

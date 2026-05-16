@@ -137,6 +137,67 @@ Lossy mode uses `codec_meta`:
 cparams["codec_meta"] = 80  # interpreted as 8.0 in rate mode
 ```
 
+## Float32 Quantization Mode
+
+`float32` input is supported only when explicitly enabled.  The codec first
+maps each float chunk to an integer image (`uint8`, `uint16`, or `uint32`),
+compresses that integer image with the selected HTJ2K backend, and stores a
+small private header with the scale metadata.  Decode restores `float32` bytes.
+
+Integer `uint8`, `uint16`, and `uint32` inputs keep the normal path and are not
+affected by this mode.
+
+Recommended starting point:
+
+```python
+import blosc2_htj2k
+
+blosc2_htj2k.register_codec()
+blosc2_htj2k.configure(backend="openhtj2k", float_mode="uint16")
+```
+
+With optional saturation:
+
+```python
+blosc2_htj2k.configure(
+    backend="openhtj2k",
+    float_mode="uint16",
+    float_clamp_min=-1.0,
+    float_clamp_max=1.0,
+)
+```
+
+Environment-only configuration, useful for HDF5/C++/service deployments:
+
+```bash
+export BLOSC2_HTJ2K_FLOAT=uint16
+export BLOSC2_HTJ2K_FLOAT_CLAMP_MIN=-1.0
+export BLOSC2_HTJ2K_FLOAT_CLAMP_MAX=1.0
+export BLOSC2_HTJ2K_FLOAT_NAN_POLICY=fail
+```
+
+Accepted `BLOSC2_HTJ2K_FLOAT` values are `off`, `8`, `16`, `32`, `uint8`,
+`uint16`, and `uint32`.  `uint16` is the recommended default.  `uint32`
+requires a backend that supports 32-bit samples, currently Kakadu.
+
+For lossless inner JPEG2000 compression, the expected quantization error is:
+
+```text
+max_abs_error <= (scale_max - scale_min) / (2 * qmax) + float32_margin
+```
+
+where `qmax` is `255`, `65535`, or `4294967295`.  If clamp bounds are set,
+values outside the clamp range saturate to the clamp bounds before
+quantization.  NaN and Inf values fail clearly in this v1 mode; masks are not
+preserved.
+
+Hands-on float examples:
+
+```bash
+python examples/quickstart.py --backend openhtj2k --float-mode uint16
+python examples/quickstart.py --backend openhtj2k --float-mode uint8 --float-clamp-min -1 --float-clamp-max 1
+```
+
 ## Installation
 
 When published as a wheel:
@@ -265,8 +326,8 @@ python -m blosc2_htj2k --selftest
 ```
 
 The diagnostic JSON reports plugin roots, manifest priority, selected backend,
-loadability, ABI validity, dependent-library loader errors, and relevant
-environment variables.
+resolved float configuration, loadability, ABI validity, dependent-library
+loader errors, and relevant environment variables.
 
 ## Compression Parameters
 

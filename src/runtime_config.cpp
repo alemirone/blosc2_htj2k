@@ -9,9 +9,13 @@
 #include "runtime_config.h"
 
 #include <algorithm>
+#include <cerrno>
+#include <cctype>
 #include <cstdlib>
 #include <cstring>
+#include <cmath>
 #include <fstream>
+#include <limits>
 #include <mutex>
 #include <set>
 #include <sstream>
@@ -37,6 +41,13 @@ struct RuntimeConfig {
     std::string plugin_path;
     std::string j2k_backend;
     std::string htj2k_backend;
+    bool explicit_float = false;
+    uint32_t float_quant_bits = 0;
+    bool float_clamp_min_set = false;
+    bool float_clamp_max_set = false;
+    double float_clamp_min = 0.0;
+    double float_clamp_max = 0.0;
+    uint32_t float_nan_policy = 0;
     std::string last_error;
 };
 
@@ -92,6 +103,121 @@ std::vector<std::string> split_path_list(const std::string &value) {
 std::string env_string(const char *name) {
     const char *value = std::getenv(name);
     return value ? std::string(value) : std::string();
+}
+
+bool parse_double_value(const std::string &value, double &out) {
+    if (value.empty()) {
+        return false;
+    }
+    char *end = nullptr;
+    errno = 0;
+    double parsed = std::strtod(value.c_str(), &end);
+    if (errno != 0 || end == value.c_str() || *end != '\0' || !std::isfinite(parsed)) {
+        return false;
+    }
+    out = parsed;
+    return true;
+}
+
+bool parse_float_quant_bits(const std::string &value, bool &enabled, uint32_t &bits) {
+    std::string lower = value;
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (lower.empty() || lower == "off" || lower == "0" ||
+        lower == "false" || lower == "disable" || lower == "disabled") {
+        enabled = false;
+        bits = 0;
+        return true;
+    }
+    if (lower == "8" || lower == "uint8" || lower == "u8") {
+        enabled = true;
+        bits = 8;
+        return true;
+    }
+    if (lower == "16" || lower == "uint16" || lower == "u16") {
+        enabled = true;
+        bits = 16;
+        return true;
+    }
+    if (lower == "32" || lower == "uint32" || lower == "u32") {
+        enabled = true;
+        bits = 32;
+        return true;
+    }
+    return false;
+}
+
+FloatRuntimeConfig validate_float_config(FloatRuntimeConfig cfg) {
+    if (!cfg.enabled) {
+        return cfg;
+    }
+    if (!(cfg.quant_bits == 8 || cfg.quant_bits == 16 || cfg.quant_bits == 32)) {
+        cfg.valid = false;
+        cfg.error = "float mode quantization must be one of 8, 16 or 32 bits";
+        return cfg;
+    }
+    if (cfg.nan_policy != 0) {
+        cfg.valid = false;
+        cfg.error = "float mode v1 only supports nan_policy=fail";
+        return cfg;
+    }
+    if (cfg.clamp_min_set && cfg.clamp_max_set && cfg.clamp_min > cfg.clamp_max) {
+        cfg.valid = false;
+        cfg.error = "float mode clamp_min is greater than clamp_max";
+        return cfg;
+    }
+    return cfg;
+}
+
+FloatRuntimeConfig resolve_float_config_locked(const RuntimeConfig &config) {
+    FloatRuntimeConfig result;
+    if (config.explicit_float) {
+        result.enabled = config.float_quant_bits != 0;
+        result.quant_bits = config.float_quant_bits;
+        result.clamp_min_set = config.float_clamp_min_set;
+        result.clamp_max_set = config.float_clamp_max_set;
+        result.clamp_min = config.float_clamp_min;
+        result.clamp_max = config.float_clamp_max;
+        result.nan_policy = config.float_nan_policy;
+        return validate_float_config(result);
+    }
+
+    std::string mode = env_string("BLOSC2_HTJ2K_FLOAT");
+    if (mode.empty()) {
+        return result;
+    }
+    if (!parse_float_quant_bits(mode, result.enabled, result.quant_bits)) {
+        result.valid = false;
+        result.error = "invalid BLOSC2_HTJ2K_FLOAT value: " + mode;
+        return result;
+    }
+
+    std::string clamp_min = env_string("BLOSC2_HTJ2K_FLOAT_CLAMP_MIN");
+    if (!clamp_min.empty()) {
+        result.clamp_min_set = true;
+        if (!parse_double_value(clamp_min, result.clamp_min)) {
+            result.valid = false;
+            result.error = "invalid BLOSC2_HTJ2K_FLOAT_CLAMP_MIN value: " + clamp_min;
+            return result;
+        }
+    }
+    std::string clamp_max = env_string("BLOSC2_HTJ2K_FLOAT_CLAMP_MAX");
+    if (!clamp_max.empty()) {
+        result.clamp_max_set = true;
+        if (!parse_double_value(clamp_max, result.clamp_max)) {
+            result.valid = false;
+            result.error = "invalid BLOSC2_HTJ2K_FLOAT_CLAMP_MAX value: " + clamp_max;
+            return result;
+        }
+    }
+    std::string nan_policy = env_string("BLOSC2_HTJ2K_FLOAT_NAN_POLICY");
+    if (!nan_policy.empty() && nan_policy != "fail") {
+        result.valid = false;
+        result.error = "blosc2_htj2k float mode v1 only supports BLOSC2_HTJ2K_FLOAT_NAN_POLICY=fail";
+        return result;
+    }
+    result.nan_policy = 0;
+    return validate_float_config(result);
 }
 
 std::string family_dir_name(PluginFamily family) {
@@ -542,7 +668,12 @@ std::string json_escape(const std::string &value) {
 
 int configure_runtime(const char *plugin_path,
                       const char *j2k_backend,
-                      const char *htj2k_backend) {
+                      const char *htj2k_backend,
+                      uint32_t float_flags,
+                      uint32_t float_quant_bits,
+                      double float_clamp_min,
+                      double float_clamp_max,
+                      uint32_t float_nan_policy) {
     std::lock_guard<std::mutex> lock(runtime_config_mutex());
     RuntimeConfig &config = runtime_config();
     if (config.frozen) {
@@ -554,6 +685,30 @@ int configure_runtime(const char *plugin_path,
     config.plugin_path = is_empty(plugin_path) ? "" : plugin_path;
     config.j2k_backend = is_empty(j2k_backend) ? "" : j2k_backend;
     config.htj2k_backend = is_empty(htj2k_backend) ? "" : htj2k_backend;
+    config.explicit_float = (float_flags & 0x01u) != 0;
+    config.float_quant_bits = float_quant_bits;
+    config.float_clamp_min_set = (float_flags & 0x02u) != 0;
+    config.float_clamp_max_set = (float_flags & 0x04u) != 0;
+    config.float_clamp_min = float_clamp_min;
+    config.float_clamp_max = float_clamp_max;
+    config.float_nan_policy = float_nan_policy;
+    if ((float_flags & ~0x07u) != 0) {
+        config.last_error = "unknown blosc2_htj2k float configuration flag";
+        return -1;
+    }
+    FloatRuntimeConfig float_cfg;
+    float_cfg.enabled = config.explicit_float && config.float_quant_bits != 0;
+    float_cfg.quant_bits = config.float_quant_bits;
+    float_cfg.clamp_min_set = config.float_clamp_min_set;
+    float_cfg.clamp_max_set = config.float_clamp_max_set;
+    float_cfg.clamp_min = config.float_clamp_min;
+    float_cfg.clamp_max = config.float_clamp_max;
+    float_cfg.nan_policy = config.float_nan_policy;
+    float_cfg = validate_float_config(float_cfg);
+    if (!float_cfg.valid) {
+        config.last_error = float_cfg.error;
+        return -1;
+    }
     config.last_error.clear();
     return 0;
 }
@@ -573,6 +728,12 @@ const char *last_runtime_error() {
 void set_runtime_error(const std::string &message) {
     std::lock_guard<std::mutex> lock(runtime_config_mutex());
     runtime_config().last_error = message;
+}
+
+FloatRuntimeConfig resolved_float_config() {
+    std::lock_guard<std::mutex> lock(runtime_config_mutex());
+    const RuntimeConfig &config = runtime_config();
+    return resolve_float_config_locked(config);
 }
 
 std::vector<PluginCandidate> plugin_load_candidates(PluginFamily family) {
@@ -676,6 +837,18 @@ std::string runtime_diagnostics_json() {
     append_json_string_field(out, "backend", configured_backend_locked(PluginFamily::HTJ2K, config));
     append_json_string_field(out, "legacy_htj2k_dir", env_string("BLOSC2_HTJ2K_REPLACEMENT_DIR"));
     append_json_string_field(out, "last_error", config.last_error);
+    FloatRuntimeConfig float_config = resolve_float_config_locked(config);
+    out << "\"float_config\":{";
+    out << "\"valid\":" << (float_config.valid ? "true" : "false") << ",";
+    out << "\"enabled\":" << (float_config.enabled ? "true" : "false") << ",";
+    out << "\"quant_bits\":" << float_config.quant_bits << ",";
+    out << "\"clamp_min_set\":" << (float_config.clamp_min_set ? "true" : "false") << ",";
+    out << "\"clamp_max_set\":" << (float_config.clamp_max_set ? "true" : "false") << ",";
+    out << "\"clamp_min\":" << float_config.clamp_min << ",";
+    out << "\"clamp_max\":" << float_config.clamp_max << ",";
+    out << "\"nan_policy\":" << float_config.nan_policy << ",";
+    out << "\"error\":\"" << json_escape(float_config.error) << "\"";
+    out << "},";
     out << "\"manifest_priority\":{\"htj2k\":[";
     for (size_t i = 0; i < manifest.htj2k_priority.size(); ++i) {
         if (i != 0) {
@@ -697,6 +870,10 @@ std::string runtime_diagnostics_json() {
     append_env_json_field(out, "BLOSC2_HTJ2K_PLUGIN_PATH");
     append_env_json_field(out, "BLOSC2_HTJ2K_BACKEND");
     append_env_json_field(out, "BLOSC2_HTJ2K_REPLACEMENT_DIR");
+    append_env_json_field(out, "BLOSC2_HTJ2K_FLOAT");
+    append_env_json_field(out, "BLOSC2_HTJ2K_FLOAT_CLAMP_MIN");
+    append_env_json_field(out, "BLOSC2_HTJ2K_FLOAT_CLAMP_MAX");
+    append_env_json_field(out, "BLOSC2_HTJ2K_FLOAT_NAN_POLICY");
     append_env_json_field(out, "BLOSC2_HTJ2K_LIBRARY");
     append_env_json_field(out, "BLOSC2_HTJ2K_DEBUG");
     append_env_json_field(out, "HDF5_PLUGIN_PATH");

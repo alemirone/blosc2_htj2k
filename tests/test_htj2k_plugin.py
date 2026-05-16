@@ -172,6 +172,223 @@ print(json.dumps({
     assert payload["max"] == 2**32 - 1
 
 
+def test_htj2k_float32_uint16_roundtrip_with_available_backend():
+    code = r"""
+import json
+
+import blosc2_htj2k
+
+backends = blosc2_htj2k.available_backends()["htj2k"]
+if not backends:
+    print(json.dumps({"skipped": True}))
+    raise SystemExit(0)
+backend = "openhtj2k" if "openhtj2k" in backends else backends[0]
+
+import blosc2
+import numpy as np
+
+blosc2_htj2k.register_codec()
+blosc2_htj2k.configure(backend=backend, float_mode="uint16")
+
+y, x = np.mgrid[0:96, 0:128]
+data = (0.25 * np.sin(x / 7.0) + 0.75 * np.cos(y / 11.0) + x * 0.001).astype(np.float32)
+cparams = {
+    "codec": blosc2_htj2k.CODEC_ID,
+    "filters": [],
+    "splitmode": blosc2.SplitMode.NEVER_SPLIT,
+}
+decoded = blosc2.asarray(data, chunks=data.shape, blocks=data.shape, cparams=cparams)[...]
+max_abs = float(np.max(np.abs(decoded - data)))
+bound = float((data.max() - data.min()) / (2 * 65535) + 2e-6)
+assert decoded.dtype == np.float32
+assert decoded.shape == data.shape
+assert max_abs <= bound
+print(json.dumps({"skipped": False, "backend": backend, "max_abs": max_abs, "bound": bound}))
+"""
+    proc = subprocess.run([sys.executable, "-c", code], text=True, capture_output=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    payload = json.loads(_last_json_line(proc.stdout))
+    if payload["skipped"]:
+        pytest.skip("no HTJ2K backend installed")
+    assert payload["max_abs"] <= payload["bound"]
+
+
+def test_htj2k_float32_uint8_clamp_constant_and_nan_behaviour():
+    code = r"""
+import json
+
+import blosc2_htj2k
+
+backends = blosc2_htj2k.available_backends()["htj2k"]
+if not backends:
+    print(json.dumps({"skipped": True}))
+    raise SystemExit(0)
+backend = "openhtj2k" if "openhtj2k" in backends else backends[0]
+
+import blosc2
+import numpy as np
+
+blosc2_htj2k.register_codec()
+blosc2_htj2k.configure(
+    backend=backend,
+    float_mode="uint8",
+    float_clamp_min=-1.0,
+    float_clamp_max=1.0,
+)
+
+data = np.linspace(-2.0, 2.0, 64 * 64, dtype=np.float32).reshape(64, 64)
+cparams = {
+    "codec": blosc2_htj2k.CODEC_ID,
+    "filters": [],
+    "splitmode": blosc2.SplitMode.NEVER_SPLIT,
+}
+decoded = blosc2.asarray(data, chunks=data.shape, blocks=data.shape, cparams=cparams)[...]
+assert decoded.dtype == np.float32
+assert float(decoded.min()) >= -1.00001
+assert float(decoded.max()) <= 1.00001
+assert abs(float(decoded[0, 0]) + 1.0) <= 1e-6
+assert abs(float(decoded[-1, -1]) - 1.0) <= 1e-6
+
+constant = np.full((16, 16), 3.5, dtype=np.float32)
+constant_decoded = blosc2.asarray(constant, chunks=constant.shape, blocks=constant.shape, cparams=cparams)[...]
+np.testing.assert_array_equal(constant_decoded, np.full_like(constant, 1.0))
+
+bad = data.copy()
+bad[3, 4] = np.nan
+failed = False
+try:
+    blosc2.asarray(bad, chunks=bad.shape, blocks=bad.shape, cparams=cparams)[...]
+except Exception as exc:
+    failed = True
+assert failed
+print(json.dumps({"skipped": False, "backend": backend}))
+"""
+    proc = subprocess.run([sys.executable, "-c", code], text=True, capture_output=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    payload = json.loads(_last_json_line(proc.stdout))
+    if payload["skipped"]:
+        pytest.skip("no HTJ2K backend installed")
+
+
+def test_htj2k_float32_constant_chunk_shortcut():
+    code = r"""
+import json
+
+import blosc2_htj2k
+
+backends = blosc2_htj2k.available_backends()["htj2k"]
+if not backends:
+    print(json.dumps({"skipped": True}))
+    raise SystemExit(0)
+backend = "openhtj2k" if "openhtj2k" in backends else backends[0]
+
+import blosc2
+import numpy as np
+
+blosc2_htj2k.register_codec()
+blosc2_htj2k.configure(backend=backend, float_mode="uint8")
+
+data = np.full((16, 16), 3.5, dtype=np.float32)
+cparams = {
+    "codec": blosc2_htj2k.CODEC_ID,
+    "filters": [],
+    "splitmode": blosc2.SplitMode.NEVER_SPLIT,
+}
+decoded = blosc2.asarray(data, chunks=data.shape, blocks=data.shape, cparams=cparams)[...]
+np.testing.assert_array_equal(decoded, data)
+print(json.dumps({"skipped": False, "backend": backend}))
+"""
+    proc = subprocess.run([sys.executable, "-c", code], text=True, capture_output=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    payload = json.loads(_last_json_line(proc.stdout))
+    if payload["skipped"]:
+        pytest.skip("no HTJ2K backend installed")
+
+
+def test_htj2k_float32_disabled_fails_clearly():
+    code = r"""
+import json
+
+import blosc2_htj2k
+
+backends = blosc2_htj2k.available_backends()["htj2k"]
+if not backends:
+    print(json.dumps({"skipped": True}))
+    raise SystemExit(0)
+backend = backends[0]
+
+import blosc2
+import numpy as np
+
+blosc2_htj2k.register_codec()
+blosc2_htj2k.configure(backend=backend)
+data = np.arange(32 * 32, dtype=np.float32).reshape(32, 32)
+cparams = {
+    "codec": blosc2_htj2k.CODEC_ID,
+    "filters": [],
+    "splitmode": blosc2.SplitMode.NEVER_SPLIT,
+}
+blosc2.asarray(data, chunks=data.shape, blocks=data.shape, cparams=cparams)
+"""
+    proc = subprocess.run([sys.executable, "-c", code], text=True, capture_output=True)
+    if proc.returncode == 0 and '"skipped": true' in proc.stdout.lower():
+        pytest.skip("no HTJ2K backend installed")
+    assert proc.returncode != 0
+    assert "float32 input requires opt-in float mode" in (proc.stdout + proc.stderr)
+
+
+def test_htj2k_float_diagnostics_show_config():
+    code = r"""
+import json
+import blosc2_htj2k
+
+blosc2_htj2k.configure(backend="openhtj2k", float_mode="uint16", float_clamp_min=0.0)
+diag = blosc2_htj2k.diagnose()
+assert diag["float_config"]["enabled"] is True
+assert diag["float_config"]["quant_bits"] == 16
+assert diag["float_config"]["clamp_min_set"] is True
+print(json.dumps({"ok": True}))
+"""
+    proc = subprocess.run([sys.executable, "-c", code], text=True, capture_output=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_htj2k_float32_uint32_with_kakadu_if_available():
+    code = r"""
+import json
+
+import blosc2_htj2k
+
+if "kakadu" not in blosc2_htj2k.available_backends()["htj2k"]:
+    print(json.dumps({"skipped": True}))
+    raise SystemExit(0)
+
+import blosc2
+import numpy as np
+
+blosc2_htj2k.register_codec()
+blosc2_htj2k.configure(backend="kakadu", float_mode="uint32")
+
+data = np.linspace(-123.25, 456.75, 48 * 64, dtype=np.float32).reshape(48, 64)
+cparams = {
+    "codec": blosc2_htj2k.CODEC_ID,
+    "filters": [],
+    "splitmode": blosc2.SplitMode.NEVER_SPLIT,
+}
+decoded = blosc2.asarray(data, chunks=data.shape, blocks=data.shape, cparams=cparams)[...]
+max_abs = float(np.max(np.abs(decoded - data)))
+assert decoded.dtype == np.float32
+assert max_abs <= 2e-4
+print(json.dumps({"skipped": False, "max_abs": max_abs}))
+"""
+    proc = subprocess.run([sys.executable, "-c", code], text=True, capture_output=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    payload = json.loads(_last_json_line(proc.stdout))
+    if payload["skipped"]:
+        pytest.skip("Kakadu HTJ2K backend is not installed")
+    assert payload["max_abs"] <= 2e-4
+
+
 def test_htj2k_cli_diagnose():
     proc = subprocess.run(
         [sys.executable, "-m", "blosc2_htj2k", "--diagnose"],

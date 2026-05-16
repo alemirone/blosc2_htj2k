@@ -34,9 +34,26 @@ struct PluginCandidate {
     bool direct = false;
 };
 
+struct FloatRuntimeConfig {
+    bool valid = true;
+    bool enabled = false;
+    uint32_t quant_bits = 0;
+    bool clamp_min_set = false;
+    bool clamp_max_set = false;
+    double clamp_min = 0.0;
+    double clamp_max = 0.0;
+    uint32_t nan_policy = 0;
+    std::string error;
+};
+
 int configure_runtime(const char *plugin_path,
                       const char *j2k_backend,
-                      const char *htj2k_backend);
+                      const char *htj2k_backend,
+                      uint32_t float_flags,
+                      uint32_t float_quant_bits,
+                      double float_clamp_min,
+                      double float_clamp_max,
+                      uint32_t float_nan_policy);
 
 void freeze_runtime_config();
 
@@ -49,6 +66,8 @@ std::vector<PluginCandidate> plugin_load_candidates(PluginFamily family);
 std::vector<PluginCandidate> plugin_inventory_candidates();
 
 std::string runtime_diagnostics_json();
+
+FloatRuntimeConfig resolved_float_config();
 
 std::string family_name(PluginFamily family);
 
