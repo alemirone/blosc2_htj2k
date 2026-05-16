@@ -1,18 +1,29 @@
 # blosc2_htj2k
 
-Temporary Blosc2 plugin package for High Throughput JPEG2000/HTJ2K codestreams.
+`blosc2_htj2k` is an experimental Blosc2 codec plugin for High Throughput
+JPEG2000 / HTJ2K codestreams.
+
+It is a standalone split-out version of the HTJ2K part of the previous
+`blosc2_grok` runtime-backend prototype.  The goal is to keep the Blosc2 codec
+small and backend-agnostic: the Blosc2 codec is called `htj2k`, and the actual
+HTJ2K implementation is selected through backend plugins installed inside the
+package.
 
 During the transition before official c-blosc2 codec ids are assigned, this
-package registers a local dynamic codec:
+package registers a temporary dynamic codec:
 
 ```text
-codec name: htj2k
-temporary id: 161
-library: libblosc2_htj2k.so
+codec name:     htj2k
+temporary id:   161
+library:        libblosc2_htj2k.so
+Python package: blosc2_htj2k
 ```
 
-The codec itself is plugin-only.  The default backend priority is read from
-`blosc2_htj2k_plugins.json`:
+The codec is plugin-only.  There is no Grok/native HTJ2K fallback in this
+package.  Backend selection comes from explicit configuration, environment
+variables, or the installed manifest.
+
+The default manifest is:
 
 ```json
 {
@@ -20,178 +31,221 @@ The codec itself is plugin-only.  The default backend priority is read from
 }
 ```
 
-The OpenHTJ2K backend is the redistributable open-source HTJ2K backend and is
-built when the PR190-style `uint16` API is available.  If no OpenHTJ2K
-installation is configured, the default `pip install .` build downloads,
-builds and installs OpenHTJ2K PR190 into the temporary CMake build tree, then
-bundles the resulting runtime library next to the backend plugin.  The Kakadu
-backend is built only when Kakadu headers and libraries are provided.
+This means: use Kakadu when it is installed and loadable, otherwise use the
+redistributable OpenHTJ2K backend.
 
-## Installation
+## Plugin Philosophy
 
-For using `blosc2_htj2k` you will first have to install its wheel:
+The package follows the same philosophy as the `blosc2_grok` prototype, but
+with a narrower responsibility:
 
-```shell
-pip install blosc2-htj2k -U
+- `blosc2_htj2k` owns only the Blosc2 codec id and the HTJ2K dispatch logic.
+- Each codec backend lives in a backend plugin directory.
+- The core library does not directly depend on Kakadu.
+- The backend ABI is a small C interface, so new HTJ2K backends can be added
+  without changing the Blosc2-facing codec.
+- Backend discovery is deterministic and inspectable.
+- Python is convenient for configuration and diagnostics, but not required for
+  C++/HDF5/web-service runtime when the bootstrap preload path is used.
+
+The installed backend layout is:
+
+```text
+blosc2_htj2k/
+  libblosc2_htj2k.so
+  libblosc2_jpeg2000_bootstrap.so
+  blosc2_htj2k_plugins.json
+  plugins/
+    htj2k/
+      openhtj2k/
+        libblosc2_openhtj2k_backend.so
+        libopen_htj2k_R.so*
+      kakadu/
+        libblosc2_kakadu_htj2k_backend.so
 ```
 
-## Usage
+Backend capabilities:
+
+| Backend | Built when | HTJ2K | `uint8` | `uint16` | Redistributable |
+| --- | --- | --- | --- | --- | --- |
+| `plugins/htj2k/openhtj2k` | OpenHTJ2K PR190-style API found or built | yes | yes | yes | yes |
+| `plugins/htj2k/kakadu` | Kakadu found | yes | yes | yes | no |
+
+Kakadu is optional and is not redistributed by this project.
+
+## Hands-On Quick Start
+
+Clone and install the plugin in a fresh environment:
+
+```bash
+git clone https://github.com/alemirone/blosc2_htj2k.git
+cd blosc2_htj2k
+
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -v --no-build-isolation .
+```
+
+Run the quick example:
+
+```bash
+python examples/quickstart.py
+```
+
+The same example can force a backend:
+
+```bash
+python examples/quickstart.py --backend openhtj2k
+```
+
+and can exercise lossy rate mode:
+
+```bash
+python examples/quickstart.py --backend openhtj2k --lossy --codec-meta 80
+```
+
+The script creates a deterministic `uint16` image, compresses it with codec id
+`161`, decodes it, and prints compression and error metrics.  In lossless mode
+it checks exact equality.  In lossy mode it checks that the decoded image is not
+bit-identical but remains within bounded error.
+
+Minimal Python usage:
 
 ```python
 import blosc2
-import numpy as np
 import blosc2_htj2k
+import numpy as np
 
+blosc2_htj2k.register_codec()
 blosc2_htj2k.configure(backend="openhtj2k")
 
-data = np.arange(64 * 64, dtype=np.uint16).reshape(64, 64)
+data = (np.arange(128 * 128, dtype=np.uint16).reshape(128, 128) % 4096)
 cparams = {
     "codec": blosc2_htj2k.CODEC_ID,
     "filters": [],
     "splitmode": blosc2.SplitMode.NEVER_SPLIT,
 }
-bl_array = blosc2.asarray(
-    data,
-    chunks=data.shape,
-    blocks=data.shape,
-    cparams=cparams,
-)
-np.testing.assert_array_equal(bl_array[...], data)
+
+array = blosc2.asarray(data, chunks=data.shape, blocks=data.shape, cparams=cparams)
+np.testing.assert_array_equal(array[...], data)
 ```
 
-For C/C++ or HDF5-only programs that cannot call Python, preload the bootstrap
-library so c-blosc2 registers the temporary ids before the first codec use:
+Lossy mode uses `codec_meta`:
+
+```python
+cparams["codec_meta"] = 80  # interpreted as 8.0 in rate mode
+```
+
+## Installation
+
+When published as a wheel:
 
 ```bash
-export HDF5_PLUGIN_PATH=/path/to/hdf5/plugins
-export LD_LIBRARY_PATH=/path/to/blosc2/lib:/path/to/blosc2_htj2k:/path/to/openhtj2k/lib:${LD_LIBRARY_PATH:-}
-export LD_PRELOAD=/path/to/blosc2_htj2k/libblosc2_jpeg2000_bootstrap.so
-
-# Optional.  If omitted, the manifest priority chooses kakadu then openhtj2k.
-export BLOSC2_HTJ2K_BACKEND=openhtj2k
+pip install blosc2-htj2k -U
 ```
 
-## Parameters for compression
+For local development:
 
-The following parameters are available for compression for grok, with their defaults.  Most of them are named after the ones in the [Pillow library](https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html#jpeg-2000-saving) and have the same meaning.  The ones that are not in Pillow are marked with a `*` and you can get more information about them in the [grok documentation](https://github.com/GrokImageCompression/grok/wiki/3.-grk_compress), or by following the provided links.  For those marked with a ``**``, you can get more information in the [grok.h header](https://github.com/GrokImageCompression/grok/blob/a84ac2592e581405a976a00cf9e6f03cab7e2481/src/lib/core/grok.h#L975
-).
+```bash
+python -m pip install -v --no-build-isolation --force-reinstall --no-deps .
+```
 
-    'tile_size': (0, 0),
-    'tile_offset': (0, 0),
-    'quality_mode': None,
-    'quality_layers': np.zeros(0, dtype=np.float64),
-    'progression': "LRCP",
-    'num_resolutions': 6,
-    'codeblock_size': (64, 64),
-    'irreversible': False,
-    'precinct_size': (0, 0),
-    'offset': (0, 0),
-    'mct': 0,
-    * 'numgbits': 2,  # Equivalent to -N, -guard_bits
-    * 'roi_compno': -1,  # Together with 'roi_shift' it is equivalent to -R, -ROI
-    * 'roi_shift': 0,
-    * 'decod_format': GrkFileFmt.GRK_FMT_UNK,
-    * 'cod_format': GrkFileFmt.GRK_FMT_UNK,
-    * 'rsiz': GrkProfile.GRK_PROFILE_NONE,  # Equivalent to -Z, -rsiz
-    * 'framerate': 0,
-    * 'apply_icc_': False,  # Equivalent to -f, -apply_icc
-    * 'rateControlAlgorithm': GrkRateControl.BISECT,
-    * 'num_threads': 0,
-    * 'deviceId': 0,  # Equivalent to -G, -device_id
-    * 'duration': 0,  # Equivalent to -J, -duration
-    * 'repeats': 1,  # Equivalent to -e, -repetitions
-    * 'mode': GrkMode.DEFAULT,  # Equivalent to -M, -mode
-    * 'verbose': False,  # Equivalent to -v, -verbose
-    ** 'enableTilePartGeneration': False,  # See header of grok.h above
-    ** 'max_cs_size': 0,  # See header of grok.h above
-    ** 'max_comp_size': 0,  # See header of grok.h above
+OpenHTJ2K can be supplied as an installed library, as a source checkout, as the
+`src/openhtj2k` submodule, or through the automatic CMake external build.
 
-*Note: * when using the `blosc2_htj2k` plugin from C, the structure used
-for setting the parameters uses the `grok` parameters names. You can see an example
-in https://github.com/Blosc/leaps-examples/blob/main/c-compression/compress-tomo.c#L110 .
+Using an existing OpenHTJ2K installation:
 
-### codec_meta as rates quality mode
+```bash
+export OPENHTJ2K_ROOT=/path/to/openhtj2k/install
+export OPENHTJ2K_INCLUDE_DIR="$OPENHTJ2K_ROOT/include/open_htj2k/interface"
+export OPENHTJ2K_LIB_PATH="$OPENHTJ2K_ROOT/lib"
+export LD_LIBRARY_PATH="$OPENHTJ2K_LIB_PATH:${LD_LIBRARY_PATH:-}"
 
-As a simpler way to activate the rates quality mode, if you set the `codec_meta` from the `cparams` to an
-integer different from 0, the rates quality mode will be activated with a rate value equal to `codec_meta` / 10. If 
-`cod_format` is not specified, the default will be used. The `codec_meta` has priority to the `rates` param set with the 
-`blosc2_htj2k.set_params_defaults()`. Please note that only rates < 25.6 are supported with this notation.
+CMAKE_ARGS="-DOPENHTJ2K_ROOT=$OPENHTJ2K_ROOT -DOPENHTJ2K_INCLUDE_DIR=$OPENHTJ2K_INCLUDE_DIR -DOPENHTJ2K_LIBRARY_DIR=$OPENHTJ2K_LIB_PATH" \
+  python -m pip install -v --no-build-isolation --force-reinstall .
+```
+
+If Kakadu is available:
+
+```bash
+export KAKADU_ROOT=/path/to/kakadu
+export KAKADU_INCLUDE_DIR="$KAKADU_ROOT/managed/all_includes"
+export KAKADU_LIB_PATH="$KAKADU_ROOT/lib"
+export LD_LIBRARY_PATH="$KAKADU_LIB_PATH:${LD_LIBRARY_PATH:-}"
+
+CMAKE_ARGS="-DKAKADU_ROOT=$KAKADU_ROOT -DKAKADU_INCLUDE_DIR=$KAKADU_INCLUDE_DIR -DKAKADU_LIBRARY_DIR=$KAKADU_LIB_PATH" \
+  python -m pip install -v --no-build-isolation --force-reinstall .
+```
+
+On macOS, use `DYLD_LIBRARY_PATH` instead of `LD_LIBRARY_PATH`.  On Windows,
+add the directory containing dependent DLLs to `PATH` before starting Python or
+the host application.
+
+## Runtime Backend Configuration
+
+The preferred model is explicit configuration before the first encode/decode or
+HDF5 read/write:
+
 ```python
-import blosc2
+import blosc2_htj2k
 
-
-cparams = {
-    'codec': blosc2.Codec.GROK,
-    'codec_meta': 5 * 10,  # cratio will be 5
-    'filters': [],
-    'splitmode': blosc2.SplitMode.NEVER_SPLIT,
-}
+blosc2_htj2k.configure(backend="openhtj2k")
 ```
 
-## Runtime backend configuration
-
-`blosc2_htj2k` can route J2K and HTJ2K codestreams through family-specific
-runtime backends.  The preferred model is explicit configuration before the
-first encode/decode operation: Python users call `blosc2_htj2k.configure()`, and
-C/C++ hosts call `blosc2_htj2k_configure()`.  Environment variables are still
-supported for command-line tools, HDF5-only deployments, and backwards
-compatibility.
-
-Regular J2K has a built-in Grok path and therefore works without any runtime
-plugin.  HTJ2K does not use the native Grok path in this package; HTJ2K
-encode/decode requires an HTJ2K backend such as OpenHTJ2K or Kakadu.
-
-Runtime plugins are split by codestream family:
-
-* J2K plugins export `J2K_CODEC_PLUGIN`, defined in
-  `src/plugin/j2k_codec_api.h`.
-* HTJ2K plugins export `HTJ2K_CODEC_PLUGIN`, defined in
-  `src/plugin/htj2k_codec_api.h`.
-
-Named backend discovery resolves plugins as:
-
-```text
-${plugin_root}/${family}/${backend}
-```
-
-`plugin_root` is optional.  If it is not configured, the runtime automatically
-uses the default plugin root installed next to the shared library:
+All arguments are optional.  If `plugin_path` is omitted, the runtime searches
+the default plugin root installed next to `libblosc2_htj2k`:
 
 ```text
 <libblosc2_htj2k directory>/plugins
 ```
 
-For example, with the default plugin root, `family=htj2k` and
-`backend=openhtj2k` selects:
+Named backend discovery resolves:
+
+```text
+${plugin_root}/htj2k/${backend}
+```
+
+For example:
 
 ```text
 <libblosc2_htj2k directory>/plugins/htj2k/openhtj2k
 ```
 
-### Python configuration
+Selection priority is:
 
-Use `configure()` before the first Blosc2 encode/decode or HDF5 read/write:
+1. Explicit API configuration: `blosc2_htj2k.configure()` or
+   `blosc2_htj2k_configure()`.
+2. Legacy direct-directory variable: `BLOSC2_HTJ2K_REPLACEMENT_DIR`.
+3. Named backend variables: `BLOSC2_HTJ2K_PLUGIN_PATH` and
+   `BLOSC2_HTJ2K_BACKEND`.
+4. Installed manifest `blosc2_htj2k_plugins.json`.
 
-```python
-import blosc2_htj2k
+Configuration is finalized on first codec use.  Later attempts to reconfigure
+fail clearly.
 
-blosc2_htj2k.configure(
-    j2k_backend="grok",
-    htj2k_backend="openhtj2k",
-)
+Environment examples:
+
+```bash
+export BLOSC2_HTJ2K_BACKEND=openhtj2k
 ```
 
-All arguments are optional.  `plugin_path` is only needed when plugins are not
-installed under the default root next to `libblosc2_htj2k`.  A typical HTJ2K-only
-configuration can leave J2K untouched:
+or, for a custom plugin root:
 
-```python
-import blosc2_htj2k
-
-blosc2_htj2k.configure(htj2k_backend="openhtj2k")
+```bash
+export BLOSC2_HTJ2K_PLUGIN_PATH=/opt/blosc2_htj2k/plugins
+export BLOSC2_HTJ2K_BACKEND=openhtj2k
 ```
 
-The runtime can be inspected from Python:
+Legacy direct-directory example:
+
+```bash
+export BLOSC2_HTJ2K_REPLACEMENT_DIR=/opt/blosc2_htj2k/plugins/htj2k/openhtj2k
+```
+
+## Diagnostics
+
+From Python:
 
 ```python
 import blosc2_htj2k
@@ -202,7 +256,7 @@ print(blosc2_htj2k.diagnose())
 print(blosc2_htj2k.selftest())
 ```
 
-The same diagnostics are available from the command line:
+From the command line:
 
 ```bash
 python -m blosc2_htj2k --list-plugins
@@ -210,14 +264,63 @@ python -m blosc2_htj2k --diagnose
 python -m blosc2_htj2k --selftest
 ```
 
-### C/C++ configuration
+The diagnostic JSON reports plugin roots, manifest priority, selected backend,
+loadability, ABI validity, dependent-library loader errors, and relevant
+environment variables.
 
-C/C++ applications that link or explicitly load `libblosc2_htj2k` should
-configure the runtime before opening HDF5 files or using Blosc2 data that may
-need the codec:
+## Compression Parameters
+
+For compatibility with the original `blosc2_grok` interface, the Python module
+still exposes `set_params_defaults(...)` and the Grok-style parameter names.
+The most commonly useful control for quick tests is `codec_meta`.
+
+If `codec_meta` is zero or omitted, compression is lossless.  If it is non-zero,
+rate mode is activated with:
+
+```text
+rate = codec_meta / 10.0
+```
+
+Example:
+
+```python
+cparams = {
+    "codec": blosc2_htj2k.CODEC_ID,
+    "codec_meta": 5 * 10,  # rate value 5.0
+    "filters": [],
+    "splitmode": blosc2.SplitMode.NEVER_SPLIT,
+}
+```
+
+Only rates below `25.6` are supported through this one-byte notation.
+
+## HDF5 And Loader Order
+
+When reading or writing through HDF5, the HDF5 Blosc2 filter must also be
+discoverable:
+
+```bash
+export HDF5_PLUGIN_PATH="$(python -c 'import hdf5plugin; print(hdf5plugin.PLUGIN_PATH)')"
+```
+
+For Python processes, importing `blosc2_htj2k` registers the temporary codec id
+and loads the codec library with global visibility:
+
+```python
+import hdf5plugin
+import blosc2_htj2k
+import h5py
+
+blosc2_htj2k.configure(backend="openhtj2k")
+```
+
+For C/C++ applications, the explicit path is:
 
 ```c
 #include "blosc2_htj2k_public.h"
+
+blosc2_init();
+blosc2_htj2k_register_codec();
 
 blosc2_htj2k_runtime_config cfg = {0};
 cfg.struct_size = sizeof(cfg);
@@ -228,174 +331,65 @@ if (blosc2_htj2k_configure(&cfg) != 0) {
 }
 ```
 
-`blosc2_htj2k_list_plugins()` and `blosc2_htj2k_diagnose()` return JSON text into
-a caller-provided buffer.  Passing `NULL, 0` returns the required byte count.
-
-### Environment-variable configuration
-
-Environment variables remain useful when the host application cannot call the
-configuration API.  If no explicit API call has been made, backend selection is:
-
-1. Legacy direct-directory variable:
-   `BLOSC2_HTJ2K_REPLACEMENT_DIR`.
-2. Named backend variables:
-   `BLOSC2_HTJ2K_PLUGIN_PATH` and `BLOSC2_HTJ2K_BACKEND`.
-3. Default plugin root next to the shared library, when a named backend is used
-   without `BLOSC2_HTJ2K_PLUGIN_PATH`.
-4. Installed manifest `blosc2_htj2k_plugins.json`, if present.  The packaged
-   manifest prefers Kakadu when the Kakadu plugin is installed, then falls
-   back to OpenHTJ2K: `["kakadu", "openhtj2k"]`.
-
-An explicit API call has priority over all backend-selection environment
-variables.  Configuration is finalized on first codec use; later calls to
-`configure()` or `blosc2_htj2k_configure()` fail with a clear error.
-
-Named backend example:
+For unmodified C++ programs, HDF5 command-line tools, web servers, or web
+clients that cannot call this API, preload the bootstrap library:
 
 ```bash
-export BLOSC2_HTJ2K_BACKEND="openhtj2k"
-```
-
-Set `BLOSC2_HTJ2K_PLUGIN_PATH` only for non-default plugin locations.
-
-Legacy direct-directory examples:
-
-```bash
-export BLOSC2_HTJ2K_REPLACEMENT_DIR="/opt/blosc2_htj2k/plugins/htj2k/openhtj2k"
-```
-
-### Available plugins
-
-By default, CMake builds `blosc2_htj2k/plugins/htj2k/openhtj2k`.  If
-OpenHTJ2K headers and libraries are already available, discovery can be
-configured with `OPENHTJ2K_ROOT`, `OPENHTJ2K_INCLUDE_DIR` and
-`OPENHTJ2K_LIBRARY_DIR` or `OPENHTJ2K_LIB_PATH`.  In that case the backend is
-enabled only when a real CMake compile/link probe validates the PR #190-style
-`uint16` API.
-
-If no OpenHTJ2K installation is found, the default build downloads and builds
-OpenHTJ2K PR190 automatically:
-
-```bash
-pip install -v --no-build-isolation --force-reinstall .
-```
-
-To disable the automatic download/build and require a pre-existing
-OpenHTJ2K installation:
-
-```bash
-CMAKE_ARGS="-DBLOSC2_HTJ2K_BUILD_OPENHTJ2K=OFF" \
-  pip install -v --no-build-isolation --force-reinstall .
-```
-
-The automatic build can be redirected with:
-
-```bash
-CMAKE_ARGS="-DBLOSC2_HTJ2K_OPENHTJ2K_REPOSITORY=https://github.com/osamu620/OpenHTJ2K.git \
-            -DBLOSC2_HTJ2K_OPENHTJ2K_GIT_TAG=refs/pull/190/head" \
-  pip install -v --no-build-isolation --force-reinstall .
-```
-
-If Kakadu headers and libraries are available at build time, CMake builds
-`blosc2_htj2k/plugins/htj2k/kakadu`.
-Kakadu discovery can be configured with `KAKADU_ROOT`, `KAKADU_INCLUDE_DIR` and
-`KAKADU_LIBRARY_DIR` or `KAKADU_LIB_PATH`.  Kakadu is optional and not
-redistributed by this project.
-
-Backend capabilities:
-
-| Backend | Built when | HTJ2K | `uint8` | `uint16` |
-| --- | --- | --- | --- | --- |
-| `plugins/htj2k/openhtj2k` | OpenHTJ2K PR #190 API found | yes | yes | yes |
-| `plugins/htj2k/kakadu` | Kakadu found | yes | yes | yes |
-
-### Building optional backends
-
-OpenHTJ2K example, using an existing local installation instead of the
-automatic download:
-
-```bash
-export OPENHTJ2K_ROOT=/path/to/openhtj2k/install
-export OPENHTJ2K_INCLUDE_DIR="$OPENHTJ2K_ROOT/include/open_htj2k/interface"
-export OPENHTJ2K_LIB_PATH="$OPENHTJ2K_ROOT/lib"
-export LD_LIBRARY_PATH="$OPENHTJ2K_LIB_PATH:${LD_LIBRARY_PATH:-}"
-
-CMAKE_ARGS="-DOPENHTJ2K_ROOT=$OPENHTJ2K_ROOT -DOPENHTJ2K_INCLUDE_DIR=$OPENHTJ2K_INCLUDE_DIR -DOPENHTJ2K_LIBRARY_DIR=$OPENHTJ2K_LIB_PATH" \
-  pip install -v --no-build-isolation --force-reinstall .
-```
-
-Kakadu example, when local Kakadu libraries are available:
-
-```bash
-export KAKADU_ROOT=/path/to/kakadu
-export KAKADU_INCLUDE_DIR="$KAKADU_ROOT/managed/all_includes"
-export KAKADU_LIB_PATH="$KAKADU_ROOT/lib"
-export LD_LIBRARY_PATH="$KAKADU_LIB_PATH:${LD_LIBRARY_PATH:-}"
-
-CMAKE_ARGS="-DKAKADU_ROOT=$KAKADU_ROOT -DKAKADU_INCLUDE_DIR=$KAKADU_INCLUDE_DIR -DKAKADU_LIBRARY_DIR=$KAKADU_LIB_PATH" \
-  pip install -v --no-build-isolation --force-reinstall .
-```
-
-On macOS, use `DYLD_LIBRARY_PATH` instead of `LD_LIBRARY_PATH`.  On Windows,
-add the directory containing dependent DLLs to `PATH` before starting Python or
-the host application.
-
-### HDF5 and loader order
-
-When reading or writing through HDF5, the HDF5 Blosc2 filter must also be
-discoverable:
-
-```bash
-export HDF5_PLUGIN_PATH="$(python -c 'import hdf5plugin; print(hdf5plugin.PLUGIN_PATH)')"
-```
-
-For Python processes, importing `blosc2_htj2k` before the first HDF5 read/write
-loads the native codec library with global visibility:
-
-```python
-import blosc2_htj2k
-import hdf5plugin
-import h5py
-```
-
-For C/C++ applications, the preferred approach is to link or load
-`libblosc2_htj2k` and call `blosc2_htj2k_register_codec()` and
-`blosc2_htj2k_configure()` before HDF5 starts reading compressed datasets.
-`LD_PRELOAD` remains useful for applications or command line tools where no
-explicit initialization hook is available:
-
-```bash
+export HDF5_PLUGIN_PATH=/path/to/hdf5/plugins
 export LD_LIBRARY_PATH=/path/to/blosc2/lib:/path/to/blosc2_htj2k:/path/to/openhtj2k/lib:${LD_LIBRARY_PATH:-}
-export LD_PRELOAD=/path/to/blosc2_htj2k/libblosc2_jpeg2000_bootstrap.so
+export LD_PRELOAD=/path/to/blosc2_htj2k/libblosc2_jpeg2000_bootstrap.so${LD_PRELOAD:+:${LD_PRELOAD}}
 ```
 
-The bootstrap calls `blosc2_init()` and registers both temporary ids, `j2k=160`
-and `htj2k=161`, after Blosc2 has initialized its built-in registry.
+The bootstrap calls `blosc2_init()` and registers both temporary JPEG2000 ids
+used during this prototype:
 
-If the dynamic loader reports that a shared object or DLL cannot be opened, the
-backend was found but one of its dependent libraries was not.  In practice,
-this usually means a backend library directory is missing from
-`LD_LIBRARY_PATH`, `DYLD_LIBRARY_PATH` or `PATH`, depending on the platform.
+```text
+j2k   -> 160
+htj2k -> 161
+```
 
-## Notes
+This is only a deployment bridge for the temporary-id phase.  With official
+c-blosc2 codec ids, this should become simpler.
 
-When using `blosc2_htj2k`, there are some restrictions that you have
-to keep in mind.
+## Current Tests
 
-* The minimum supported image size is around 256 bytes, so an image with
-  less size will fail to be compressed.
-* The maximum datatype precision is of 16 bits.
-* Although floats from 16 or fewer bits of precision seem to work, we
-  recommend using integer data when possible.
+The current tests cover:
 
-## More examples
+- manifest and plugin listing;
+- codec registration with temporary id `161`;
+- lossless HTJ2K roundtrip;
+- lossy HTJ2K roundtrip through every available HTJ2K backend plugin;
+- command-line diagnostics.
 
-See the [examples](examples/) directory for more examples.
+## Limitations
+
+- Codec id `161` is temporary.
+- Files written with id `161` require the same temporary registration mechanism
+  until an official c-blosc2 id exists.
+- Kakadu is optional and not redistributable.
+- OpenHTJ2K is the redistributable open-source backend, currently based on the
+  PR190-style `uint16` API.
+- The maximum datatype precision is 16 bits.
+- The minimum practical image payload is around 256 bytes.
+
+## Next Steps Toward An Official Plugin
+
+1. Publish this standalone repository as the candidate `blosc2_htj2k` plugin.
+2. Validate Python, C/C++, HDF5, and service-runtime usage.
+3. Ask the c-blosc2 maintainers for an official codec id for `htj2k`.
+4. Replace temporary id `161` with the official id.
+5. Keep the backend ABI independent from the Blosc2-facing codec.
+6. Keep OpenHTJ2K as the redistributable backend and Kakadu as an optional
+   external backend.
+
+## More Examples
+
+See the [examples](examples/) directory.
 
 ## Thanks
 
-Thanks to Marta Iborra, from the Blosc Development Team, for doing most of the job in making this plugin possible, and J. David Ibáñez and Francesc Alted for the initial contributions.  Also, thanks to Aaron Boxer, the original author of the [grok library](https://github.com/GrokImageCompression/grok), for his help in ironing out issues for making this interaction possible. 
-
-That's all folks!
-
-The Blosc Development Team
+Thanks to Marta Iborra, from the Blosc Development Team, for doing most of the
+job in making the original `blosc2_grok` plugin possible, and J. David Ibanez
+and Francesc Alted for the initial contributions.  Also, thanks to Aaron Boxer,
+the original author of the [Grok library](https://github.com/GrokImageCompression/grok),
+for his help in making this interaction possible.

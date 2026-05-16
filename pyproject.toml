@@ -1,5 +1,5 @@
 ##############################################################################
-# blosc2_htj2k: Grok (JPEG2000 codec) plugin for Blosc2
+# blosc2_htj2k: HTJ2K codec plugin for Blosc2
 #
 # Copyright (c) 2023  The Blosc Development Team <blosc@blosc.org>
 # https://blosc.org
@@ -17,7 +17,7 @@ readme = "README.md"
 authors = [
     {name = "Blosc Development Team", email = "contact@blosc.org"},
 ]
-description = "Grok (JPEG2000 codec) plugin for Blosc2."
+description = "Experimental Blosc2 HTJ2K codec plugin with OpenHTJ2K and optional Kakadu backends."
 keywords = ["plugin", "blosc2"]
 license = {text = "GNU Affero General Public License version 3"}
 classifiers = [
@@ -44,8 +44,8 @@ h5py-test = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Blosc/blosc2_htj2k"
-Issues = "https://github.com/Blosc/blosc2_htj2k/issues"
+Homepage = "https://github.com/alemirone/blosc2_htj2k"
+Issues = "https://github.com/alemirone/blosc2_htj2k/issues"
 
 [tool.setuptools]
 platforms = [ "any" ]
