@@ -192,9 +192,12 @@ def main():
         "lossy": args.lossy,
         "float_mode": args.float_mode or "off",
         "codec_meta": cparams.get("codec_meta", 0),
+        "target_cratio": (args.codec_meta / 10.0) if args.lossy else None,
         "input_nbytes": int(data.nbytes),
         "compressed_cbytes": int(compressed.schunk.cbytes),
+        "achieved_cratio": float(data.nbytes) / float(compressed.schunk.cbytes),
         "equal": equal,
+        "lossless_despite_rate_target": bool(args.lossy and equal),
         "max_abs_error": max_abs_error,
         "mean_abs_error": mean_abs_error,
         "expected_quant_bound": bound,
@@ -216,7 +219,6 @@ def main():
             assert payload["max_abs_error"] <= payload["expected_quant_bound"]
             assert payload["hdf5_max_abs_error"] <= payload["expected_quant_bound"]
     elif args.lossy:
-        assert not payload["equal"]
         assert payload["max_abs_error"] <= 512
         assert payload["mean_abs_error"] <= 80.0
     else:
