@@ -76,12 +76,13 @@ Kakadu is optional and is not redistributed by this project.
 
 For now this plugin depends on the experimental `c-blosc2` and
 `python-blosc2` branches that define and expose the proposed J2K/HTJ2K codec
-IDs.  The quick start is therefore a full-stack install: first install
-`c-blosc2` into a local prefix, then build `python-blosc2` against that prefix,
-then install `blosc2_htj2k`.
+IDs.  The quick start is therefore a full-stack install, but it follows the
+same packaging model as the normal `python-blosc2` wheel: the experimental
+`python-blosc2` branch bundles the matching experimental `c-blosc2` runtime in
+`blosc2/lib`.
 
-Once these branches are merged and released upstream, the first two clone/build
-steps collapse back to a normal released `blosc2` dependency.
+Once these branches are merged and released upstream, the `python-blosc2`
+clone/build step collapses back to a normal released `blosc2` dependency.
 
 ```bash
 set -x
@@ -96,26 +97,9 @@ python -m pip install --upgrade pip setuptools wheel
 python -m pip install scikit-build-core cython numpy
 export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-20}"
 
-git clone https://github.com/alemirone/c-blosc2.git
-git -C c-blosc2 checkout add_j2k_htj2k_codec_ids
-
-cmake -S c-blosc2 -B c-blosc2-build \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="$PWD/prefix" \
-  -DBUILD_TESTS=OFF \
-  -DBUILD_EXAMPLES=OFF \
-  -DBUILD_BENCHMARKS=OFF \
-  -DBUILD_FUZZERS=OFF
-cmake --build c-blosc2-build --parallel "$CMAKE_BUILD_PARALLEL_LEVEL"
-cmake --install c-blosc2-build
-
-export PKG_CONFIG_PATH="$PWD/prefix/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-export LD_LIBRARY_PATH="$PWD/prefix/lib:${LD_LIBRARY_PATH:-}"
-export CMAKE_PREFIX_PATH="$PWD/prefix:${CMAKE_PREFIX_PATH:-}"
-
 git clone https://github.com/alemirone/python-blosc2.git
 git -C python-blosc2 checkout add_j2k_htj2k_custom_codecs
-USE_SYSTEM_BLOSC2=1 python -m pip install -v --no-build-isolation ./python-blosc2
+python -m pip install -v --no-build-isolation ./python-blosc2
 
 python - <<'PY'
 import blosc2
