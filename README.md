@@ -188,6 +188,16 @@ export LD_LIBRARY_PATH="${BLOSC2_PACKAGE}/lib:${HTJ2K_PACKAGE}:${LD_LIBRARY_PATH
 # HDF5 file, then check the decoded values.
 python ./blosc2_htj2k/examples/quickstart.py
 
+# Build and run the C++ B2ND quickstart.  It links only to libblosc2; the HTJ2K
+# codec library is discovered through LD_LIBRARY_PATH.
+g++ -std=c++17 ./blosc2_htj2k/examples/cpp_quickstart.cpp \
+  -o ./cpp_htj2k_quickstart \
+  -I"${BLOSC2_PACKAGE}/include" \
+  -L"${BLOSC2_PACKAGE}/lib" \
+  -Wl,-rpath,"${BLOSC2_PACKAGE}/lib" \
+  -lblosc2
+./cpp_htj2k_quickstart
+
 # Read the compressed HDF5 file in the simple Python deployment mode:
 # hdf5plugin only.  Backend choice comes from blosc2_htj2k_plugins.json.
 env -u HDF5_PLUGIN_PATH -u BLOSC2_HTJ2K_BACKEND -u BLOSC2_HTJ2K_PLUGIN_PATH python - <<'PY'
@@ -269,10 +279,35 @@ python ./blosc2_htj2k/examples/quickstart.py --lossy --codec-meta 80
 
 This creates the same deterministic `uint16` stack, asks the backend for lossy
 compression through `codec_meta`, decodes it, and checks that the decoded image
-is not bit-identical but remains within bounded error.  In this prototype,
-`codec_meta=80` is interpreted as `8.0` in the backend rate mode.
+remains within bounded error.  In this prototype, `codec_meta=80` is interpreted
+as `8.0` in the backend rate mode.  A loose rate target can still decode
+bit-identically when the chunk fits in the requested budget without losing
+information.
 The HDF5 pair is still written so the user can inspect the raw and compressed
 stack files produced by the quick start.
+
+Build and run the C++ quickstart:
+
+```bash
+export PKG_CONFIG_PATH="${BLOSC2_PACKAGE}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+export LD_LIBRARY_PATH="${BLOSC2_PACKAGE}/lib:${HTJ2K_PACKAGE}:${LD_LIBRARY_PATH:-}"
+
+g++ -std=c++17 ./blosc2_htj2k/examples/cpp_quickstart.cpp \
+  -o ./cpp_htj2k_quickstart \
+  -I"${BLOSC2_PACKAGE}/include" \
+  -L"${BLOSC2_PACKAGE}/lib" \
+  -Wl,-rpath,"${BLOSC2_PACKAGE}/lib" \
+  -lblosc2
+
+./cpp_htj2k_quickstart
+./cpp_htj2k_quickstart --codec-meta 20
+```
+
+This program links only to `libblosc2`.  It does not import Python and does not
+link to `libblosc2_htj2k` explicitly.  The updated c-blosc2 registry knows
+codec id `40`, and `LD_LIBRARY_PATH` lets c-blosc2 discover
+`libblosc2_htj2k.so` at runtime.  The sample uses B2ND because JPEG2000 needs
+the chunk shape and item size metadata.
 
 Open the generated HDF5 files from a Python prompt.  In Python, importing
 `hdf5plugin` is enough; do not pre-load the same plugin through
