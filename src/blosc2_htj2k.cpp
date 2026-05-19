@@ -427,15 +427,20 @@ int blosc2_htj2k_encoder(
                                     request, plugin, debug);
 }
 
-// Native Grok implementation of the Blosc2 encoder entry point.
-int blosc2_htj2k_native_encoder(
+namespace {
+
+// Native Grok implementation used by the legacy J2K helper and by the optional
+// Grok HTJ2K backend plugin.
+int grok_native_encoder_impl(
     const uint8_t *input,
     int32_t input_len,
     uint8_t *output,
     int32_t output_len,
     uint8_t meta,
     blosc2_cparams* cparams,
-    const void* chunk
+    const void* chunk,
+    const htj2k_codec_request_t *request,
+    bool force_htj2k
 ) {
     int size = -1;
 
@@ -455,7 +460,16 @@ int blosc2_htj2k_native_encoder(
     const uint32_t dimY = static_cast<uint32_t>(dim_y);
     const uint32_t numComps = static_cast<uint32_t>(num_comps);
     const uint32_t typesize = static_cast<uint32_t>(layout.typesize);
-    const uint32_t precision = 8 * typesize;
+    uint32_t precision = 8 * typesize;
+    uint32_t sample_bytes = typesize;
+    if (request != nullptr && request->precision_bits != 0) {
+        precision = request->precision_bits;
+        sample_bytes = (precision + 7) / 8;
+    }
+    if (!(sample_bytes == 1 || sample_bytes == 2 || sample_bytes == 4)) {
+        fprintf(stderr, "[blosc2_htj2k] Grok backend only supports 8, 16 or 32-bit integer samples\n");
+        return -1;
+    }
 
     // initialize compress parameters
     grk_codec* codec = nullptr;
@@ -471,10 +485,26 @@ int blosc2_htj2k_native_encoder(
         compressParams = &codec_params->compressParams;
         streamParams = &codec_params->streamParams;
     }
-    if (is_htj2k_requested(compressParams)) {
+    grk_cparameters localCompressParams;
+    if (force_htj2k) {
+        localCompressParams = *compressParams;
+        compressParams = &localCompressParams;
+        compressParams->cblk_sty = GRK_CBLKSTY_HT;
+        compressParams->rsiz |= GRK_JPH_RSIZ_FLAG;
+        if (compressParams->cod_format == GRK_FMT_UNK) {
+            compressParams->cod_format = GRK_FMT_JP2;
+        }
+    } else if (is_htj2k_requested(compressParams)) {
         fprintf(stderr,
                 "[blosc2_htj2k] HTJ2K encode parameters were passed to the native "
                 "J2K helper; use the plugin-only HTJ2K codec entry point instead\n");
+        if (codec_params == nullptr) {
+            free(streamParams);
+        }
+        return -1;
+    }
+    if (force_htj2k && meta != 0) {
+        fprintf(stderr, "[blosc2_htj2k] Grok HTJ2K backend does not support codec_meta rate mode\n");
         if (codec_params == nullptr) {
             free(streamParams);
         }
@@ -491,7 +521,7 @@ int blosc2_htj2k_native_encoder(
     }
 
     std::unique_ptr<uint8_t[]> data;
-    size_t bufLen = (size_t)numComps * ((precision + 7) / 8) * dimX * dimY;
+    size_t bufLen = (size_t)numComps * sample_bytes * dimX * dimY;
     data = std::make_unique<uint8_t[]>(bufLen);
     streamParams->buf = data.get();
     streamParams->buf_len = bufLen;
@@ -536,7 +566,7 @@ int blosc2_htj2k_native_encoder(
         memset(srcData, 0, compWidth * compHeight * sizeof(int32_t));
         for (uint32_t j = 0; j < compHeight; ++j) {
             for (uint32_t i = 0; i < compWidth; ++i) {
-                memcpy(srcData + j * compWidth + i, &ptr[index * typesize], typesize);
+                memcpy(srcData + j * compWidth + i, &ptr[index * sample_bytes], sample_bytes);
                 index += numComps;
             }
         }
@@ -580,6 +610,22 @@ beach:
     }
 
     return size;
+}
+
+}  // namespace
+
+// Native Grok implementation of the Blosc2 encoder entry point.
+int blosc2_htj2k_native_encoder(
+    const uint8_t *input,
+    int32_t input_len,
+    uint8_t *output,
+    int32_t output_len,
+    uint8_t meta,
+    blosc2_cparams* cparams,
+    const void* chunk
+) {
+    return grok_native_encoder_impl(input, input_len, output, output_len, meta,
+                                    cparams, chunk, nullptr, false);
 }
 
 // Release a partially initialized decoder and return the requested status code.
@@ -752,6 +798,34 @@ int blosc2_htj2k_native_decoder(const uint8_t *input, int32_t input_len, uint8_t
 
     grk_object_unref(codec);
     return output_len;
+}
+
+extern "C" BLOSC2_HTJ2K_EXPORT int blosc2_grok_htj2k_encoder(
+    const uint8_t *input,
+    int32_t input_len,
+    uint8_t *output,
+    int32_t output_len,
+    uint8_t meta,
+    blosc2_cparams* cparams,
+    const void* chunk,
+    const htj2k_codec_request_t *request
+) {
+    return grok_native_encoder_impl(input, input_len, output, output_len, meta,
+                                    cparams, chunk, request, true);
+}
+
+extern "C" BLOSC2_HTJ2K_EXPORT int blosc2_grok_htj2k_decoder(
+    const uint8_t *input,
+    int32_t input_len,
+    uint8_t *output,
+    int32_t output_len,
+    uint8_t meta,
+    blosc2_dparams *dparams,
+    const void *chunk,
+    const htj2k_codec_request_t *request
+) {
+    (void)request;
+    return blosc2_htj2k_native_decoder(input, input_len, output, output_len, meta, dparams, chunk);
 }
 
 // Release any loaded replacement backend and deinitialize Grok.

@@ -18,9 +18,10 @@ library:        libblosc2_htj2k.so
 Python package: blosc2_htj2k
 ```
 
-The codec is plugin-only.  There is no Grok/native HTJ2K fallback in this
-package.  Backend selection comes from explicit configuration, environment
-variables, or the installed manifest.
+The codec is plugin-only.  Backend selection comes from explicit
+configuration, environment variables, or the installed manifest.  A bundled
+Grok HTJ2K backend is installed for explicit selection and fallback testing,
+but it is not first in the default manifest.
 
 The default manifest is:
 
@@ -32,6 +33,20 @@ The default manifest is:
 
 This means: use Kakadu when it is installed and loadable, otherwise use the
 redistributable OpenHTJ2K backend.
+
+Grok can also be selected explicitly:
+
+```bash
+export BLOSC2_HTJ2K_BACKEND=grok
+```
+
+or by editing a deployment manifest, for example:
+
+```json
+{
+  "htj2k": ["kakadu", "openhtj2k", "grok"]
+}
+```
 
 ## Plugin Philosophy
 
@@ -59,6 +74,8 @@ blosc2_htj2k/
       openhtj2k/
         libblosc2_openhtj2k_backend.so
         libopen_htj2k_R.so*
+      grok/
+        libblosc2_grok_htj2k_backend.so
       kakadu/
         libblosc2_kakadu_htj2k_backend.so
 ```
@@ -68,9 +85,13 @@ Backend capabilities:
 | Backend | Built when | HTJ2K | `uint8` | `uint16` | `uint32` | Redistributable |
 | --- | --- | --- | --- | --- | --- | --- |
 | `plugins/htj2k/openhtj2k` | OpenHTJ2K PR190-style API found or built | yes | yes | yes | no | yes |
+| `plugins/htj2k/grok` | always | yes, lossless path | yes | yes | no | yes |
 | `plugins/htj2k/kakadu` | Kakadu found | yes | yes | yes | yes | no |
 
-Kakadu is optional and is not redistributed by this project.
+Kakadu is optional and is not redistributed by this project.  The Grok backend
+uses the bundled Grok implementation through the same HTJ2K plugin ABI as the
+external backends; it is useful as an always-installed fallback, but OpenHTJ2K
+remains the preferred redistributable backend for normal HTJ2K testing.
 
 ## Hands-On Quick Start
 
@@ -518,6 +539,10 @@ For example:
 <libblosc2_htj2k directory>/plugins/htj2k/openhtj2k
 ```
 
+The installed backend names are `openhtj2k`, `grok`, and optionally `kakadu`.
+`grok` is installed by default but is selected only when requested explicitly or
+when a custom manifest gives it priority.
+
 Selection priority is:
 
 1. Explicit API configuration: `blosc2_htj2k.configure()` or
@@ -536,6 +561,12 @@ Environment examples:
 export BLOSC2_HTJ2K_BACKEND=openhtj2k
 ```
 
+or:
+
+```bash
+export BLOSC2_HTJ2K_BACKEND=grok
+```
+
 or, for a custom plugin root:
 
 ```bash
@@ -547,6 +578,18 @@ Legacy direct-directory example:
 
 ```bash
 export BLOSC2_HTJ2K_REPLACEMENT_DIR=/opt/blosc2_htj2k/plugins/htj2k/openhtj2k
+```
+
+Custom manifest example:
+
+```json
+{
+  "version": 1,
+  "plugin_path": "plugins",
+  "priority": {
+    "htj2k": ["kakadu", "openhtj2k", "grok"]
+  }
+}
 ```
 
 ## Diagnostics
@@ -665,7 +708,7 @@ blosc2_htj2k_register_codec();
 blosc2_htj2k_runtime_config cfg = {0};
 cfg.struct_size = sizeof(cfg);
 /* Leave cfg.backend NULL to use blosc2_htj2k_plugins.json.
-   Set cfg.backend = "openhtj2k" or "kakadu" to force a backend. */
+   Set cfg.backend = "openhtj2k", "grok", or "kakadu" to force a backend. */
 
 if (blosc2_htj2k_configure(&cfg) != 0) {
     fprintf(stderr, "%s\n", blosc2_htj2k_last_error());
@@ -721,6 +764,7 @@ The current tests cover:
 - manifest and plugin listing;
 - codec registry check with id `40`;
 - lossless HTJ2K roundtrip;
+- explicit Grok HTJ2K backend roundtrip;
 - lossy HTJ2K roundtrip through every available HTJ2K backend plugin;
 - optional Kakadu `uint32` lossless roundtrip when Kakadu is installed;
 - command-line diagnostics.
@@ -733,6 +777,9 @@ The current tests cover:
 - Kakadu is optional and not redistributable.
 - OpenHTJ2K is the redistributable open-source backend, currently based on the
   PR190-style `uint16` API.
+- Grok is installed as an explicit HTJ2K backend, but its HTJ2K rate-control
+  path is not used here; select OpenHTJ2K or Kakadu for lossy/rate-target
+  tests.
 - OpenHTJ2K currently handles the PR190-style `uint16` path; the optional
   Kakadu backend also supports `uint32`.
 - For Kakadu `uint32`, the default wavelet decomposition is capped at
@@ -747,8 +794,8 @@ The current tests cover:
 3. Merge the c-blosc2 registry PR that adds `BLOSC_CODEC_HTJ2K = 40`.
 4. Keep the bootstrap only as a loader-order helper for HDF5-only deployments.
 5. Keep the backend ABI independent from the Blosc2-facing codec.
-6. Keep OpenHTJ2K as the redistributable backend and Kakadu as an optional
-   external backend.
+6. Keep OpenHTJ2K as the preferred redistributable backend, Grok as an
+   always-installed fallback, and Kakadu as an optional external backend.
 
 ## More Examples
 

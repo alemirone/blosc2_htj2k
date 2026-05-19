@@ -128,7 +128,7 @@ def write_hdf5_stack_pair(data, output_dir, codec_id):
 
 def main():
     parser = argparse.ArgumentParser(description="Hands-on blosc2_htj2k roundtrip")
-    parser.add_argument("--backend", default=None, help="backend name, for example openhtj2k or kakadu")
+    parser.add_argument("--backend", default=None, help="backend name, for example openhtj2k, grok or kakadu")
     parser.add_argument("--lossy", action="store_true", help="enable codec_meta rate mode")
     parser.add_argument("--codec-meta", type=int, default=80, help="lossy meta byte, interpreted as meta / 10.0")
     parser.add_argument("--float-mode", choices=("uint8", "uint16", "uint32"), help="quantize float32 chunks before HTJ2K compression")

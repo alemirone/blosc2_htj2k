@@ -18,7 +18,43 @@ def _last_json_line(text):
 def test_htj2k_manifest_and_listing():
     diag = blosc2_htj2k.diagnose()
     assert diag["manifest_priority"]["htj2k"] == ["kakadu", "openhtj2k"]
-    assert "plugins" in blosc2_htj2k.list_plugins()
+    plugins = blosc2_htj2k.list_plugins()
+    assert "plugins" in plugins
+    assert any(plugin.get("family") == "htj2k" and plugin.get("backend") == "grok"
+               for plugin in plugins["plugins"])
+
+
+def test_htj2k_grok_backend_roundtrip():
+    code = r"""
+import json
+
+import blosc2
+import blosc2_htj2k
+import numpy as np
+
+if "grok" not in blosc2_htj2k.available_backends()["htj2k"]:
+    print(json.dumps({"skipped": True}))
+    raise SystemExit(0)
+
+blosc2_htj2k.register_codec()
+blosc2_htj2k.configure(backend="grok")
+base = np.arange(48 * 64, dtype=np.uint32).reshape(48, 64)
+data = ((base * 7) % 65536).astype(np.uint16)
+cparams = {
+    "codec": blosc2_htj2k.CODEC_ID,
+    "filters": [],
+    "splitmode": blosc2.SplitMode.NEVER_SPLIT,
+}
+compressed = blosc2.asarray(data, chunks=data.shape, blocks=data.shape, cparams=cparams)
+decoded = compressed[...]
+np.testing.assert_array_equal(decoded, data)
+print(json.dumps({"skipped": False, "cbytes": int(compressed.schunk.cbytes)}))
+"""
+    proc = subprocess.run([sys.executable, "-c", code], text=True, capture_output=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    payload = json.loads(_last_json_line(proc.stdout))
+    if payload["skipped"]:
+        pytest.skip("Grok HTJ2K backend is not installed")
 
 
 def test_htj2k_roundtrip_with_available_backend():
@@ -52,9 +88,9 @@ def last_json_line(text):
             return line
     raise RuntimeError(f"no JSON payload found in output:\n{text}")
 
-backends = blosc2_htj2k.available_backends()["htj2k"]
+backends = [backend for backend in blosc2_htj2k.available_backends()["htj2k"] if backend != "grok"]
 if not backends:
-    print(json.dumps({"skipped": True}))
+    print(json.dumps({"skipped": True, "reason": "no lossy-capable HTJ2K backend installed"}))
     raise SystemExit(0)
 
 results = []

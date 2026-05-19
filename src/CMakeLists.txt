@@ -127,6 +127,29 @@ install(TARGETS blosc2_jpeg2000_bootstrap
 # Note: blosc2_htj2k.h and grok headers are not installed in the wheel
 # Python users don't need them, and C developers should build from source
 
+# Always-built Grok HTJ2K backend.  This is not first in the default manifest:
+# it is installed so users can select it explicitly by API, environment, or a
+# custom manifest.
+add_library(blosc2_grok_htj2k_backend SHARED plugin/htj2k_grok_plugin.cpp)
+target_include_directories(blosc2_grok_htj2k_backend PRIVATE ${BLOSC2_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/plugin)
+target_link_libraries(blosc2_grok_htj2k_backend PRIVATE blosc2_htj2k)
+if(UNIX AND NOT APPLE)
+    set_target_properties(blosc2_grok_htj2k_backend PROPERTIES
+        INSTALL_RPATH "$ORIGIN/../../.."
+    )
+elseif(APPLE)
+    set_target_properties(blosc2_grok_htj2k_backend PROPERTIES
+        INSTALL_RPATH "@loader_path/../../.."
+    )
+endif()
+if (MSVC OR MINGW)
+    set_property(TARGET blosc2_grok_htj2k_backend PROPERTY WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
+endif()
+install(TARGETS blosc2_grok_htj2k_backend
+    RUNTIME DESTINATION blosc2_htj2k/plugins/htj2k/grok
+    LIBRARY DESTINATION blosc2_htj2k/plugins/htj2k/grok
+)
+
 # Optional Kakadu backend.  The core codec does not link to Kakadu; this target
 # is built only when the Kakadu headers and libraries are explicitly available.
 set(KAKADU_ROOT "" CACHE PATH "Kakadu installation root")
