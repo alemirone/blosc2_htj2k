@@ -7,6 +7,7 @@
 ##############################################################################
 
 import ctypes
+import ctypes.util
 import json
 import os
 import platform
@@ -122,18 +123,25 @@ elif platform.system() == "Linux":
             site_packages / ".libs",  # legacy
             blosc2_dir,  # fallback
         ]
+        lib_dirs.extend(Path(p) for p in os.environ.get("LD_LIBRARY_PATH", "").split(os.pathsep) if p)
         lib_candidates = []
         for lib_dir in lib_dirs:
             if not lib_dir.exists():
                 continue
             lib_candidates.extend(sorted(lib_dir.glob("libblosc2.so*")))
 
+        loaded = False
         for lib_path in lib_candidates:
             try:
                 ctypes.CDLL(str(lib_path), mode=ctypes.RTLD_GLOBAL)
+                loaded = True
                 break
             except OSError:
                 continue
+        if not loaded:
+            libname = ctypes.util.find_library("blosc2")
+            if libname:
+                ctypes.CDLL(libname, mode=ctypes.RTLD_GLOBAL)
     except (ImportError, OSError):
         pass
 

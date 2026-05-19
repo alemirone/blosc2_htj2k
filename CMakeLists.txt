@@ -40,41 +40,77 @@ execute_process(
     RESULT_VARIABLE BLOSC2_IMPORT_RESULT
 )
 
-# To compile blosc2_htj2k, we need the include files (and for macOS and Windows, the actual lib)
+# To compile blosc2_htj2k, we need the include files and the actual lib.
+# Prefer the PEP 427-compliant python-blosc2 wheel layout when available, but
+# also support python-blosc2 builds linked against a separately installed
+# c-blosc2.  The latter is the current quick-start path while the J2K/HTJ2K
+# codec IDs live on an experimental c-blosc2 branch.
+set(BLOSC2_INCLUDE_DIR "")
+set(BLOSC2_LIBRARIES "")
+set(BLOSC2_LIBRARY_DIR_RESOLVED "")
+
 if(BLOSC2_IMPORT_RESULT EQUAL 0 AND EXISTS "${BLOSC2_PACKAGE_DIR}")
     message(STATUS "Found blosc2 package at: ${BLOSC2_PACKAGE_DIR}")
 
-    # Try only PEP 427 compliant structure (blosc2/include/)
+    # Try PEP 427 compliant structure (blosc2/include/, blosc2/lib/) first.
     set(BLOSC2_INCLUDE_DIR "${BLOSC2_PACKAGE_DIR}/include")
     if(NOT EXISTS "${BLOSC2_INCLUDE_DIR}/blosc2.h")
-        message(FATAL_ERROR "blosc2 package found but blosc2.h not found. Tried:\n  ${BLOSC2_PACKAGE_DIR}/include")
+        message(STATUS "blosc2 package does not ship blosc2.h at ${BLOSC2_INCLUDE_DIR}; trying system c-blosc2")
+        set(BLOSC2_INCLUDE_DIR "")
     else()
         message(STATUS "Found Blosc2 include: ${BLOSC2_INCLUDE_DIR}/blosc2.h")
+
+        set(BLOSC2_LIB_DIR "${BLOSC2_PACKAGE_DIR}/lib")
+        if(EXISTS "${BLOSC2_LIB_DIR}")
+            find_library(BLOSC2_LIBRARY
+                NAMES blosc2 libblosc2
+                PATHS "${BLOSC2_LIB_DIR}"
+                NO_DEFAULT_PATH
+            )
+            if(BLOSC2_LIBRARY)
+                message(STATUS "Found Blosc2 library: ${BLOSC2_LIBRARY}")
+                set(BLOSC2_LIBRARIES "${BLOSC2_LIBRARY}")
+                get_filename_component(BLOSC2_LIBRARY_DIR_RESOLVED "${BLOSC2_LIBRARY}" DIRECTORY)
+            endif()
+        endif()
     endif()
 else()
-    message(FATAL_ERROR "Could not import blosc2 package. Please install it first: pip install blosc2")
+    message(STATUS "Could not import blosc2 package; trying system c-blosc2")
 endif()
 
-# For the test_grok and roundtrip executables, and for macOS/Windows, 
-# we also need the actual blosc2 lib
-# Try only PEP 427 compliant structure (blosc2/lib/)
-set(BLOSC2_LIB_DIR "${BLOSC2_PACKAGE_DIR}/lib")
-if(NOT EXISTS "${BLOSC2_LIB_DIR}")
-    message(FATAL_ERROR "blosc2 lib dir not found. Tried:\n  ${BLOSC2_PACKAGE_DIR}/lib")
+if(NOT BLOSC2_INCLUDE_DIR OR NOT BLOSC2_LIBRARIES)
+    find_package(Blosc2 CONFIG QUIET)
+    if(Blosc2_FOUND AND TARGET Blosc2::blosc2_shared)
+        get_target_property(_blosc2_include Blosc2::blosc2 INTERFACE_INCLUDE_DIRECTORIES)
+        if(NOT _blosc2_include)
+            get_target_property(_blosc2_include Blosc2::blosc2_shared INTERFACE_INCLUDE_DIRECTORIES)
+        endif()
+        set(BLOSC2_INCLUDE_DIR ${_blosc2_include})
+        set(BLOSC2_LIBRARIES Blosc2::blosc2_shared)
+        get_target_property(_blosc2_location Blosc2::blosc2_shared IMPORTED_LOCATION_RELEASE)
+        if(NOT _blosc2_location)
+            get_target_property(_blosc2_location Blosc2::blosc2_shared IMPORTED_LOCATION)
+        endif()
+        if(_blosc2_location)
+            get_filename_component(BLOSC2_LIBRARY_DIR_RESOLVED "${_blosc2_location}" DIRECTORY)
+        endif()
+        message(STATUS "Found system Blosc2 via CMake package")
+    else()
+        find_package(PkgConfig QUIET)
+        if(PkgConfig_FOUND)
+            pkg_check_modules(BLOSC2_PC QUIET IMPORTED_TARGET blosc2)
+            if(BLOSC2_PC_FOUND)
+                set(BLOSC2_INCLUDE_DIR ${BLOSC2_PC_INCLUDE_DIRS})
+                set(BLOSC2_LIBRARIES PkgConfig::BLOSC2_PC)
+                list(GET BLOSC2_PC_LIBRARY_DIRS 0 BLOSC2_LIBRARY_DIR_RESOLVED)
+                message(STATUS "Found system Blosc2 via pkg-config")
+            endif()
+        endif()
+    endif()
 endif()
 
-find_library(BLOSC2_LIBRARY
-    NAMES blosc2 libblosc2
-    PATHS "${BLOSC2_LIB_DIR}"
-    NO_DEFAULT_PATH
-)
-
-if(BLOSC2_LIBRARY)
-    message(STATUS "Found Blosc2 library: ${BLOSC2_LIBRARY}")
-    set(BLOSC2_LIBRARIES "${BLOSC2_LIBRARY}")
-    get_filename_component(BLOSC2_LIBRARY_DIR_RESOLVED "${BLOSC2_LIBRARY}" DIRECTORY)
-else()
-    message(FATAL_ERROR "Blosc2 library not found in ${BLOSC2_LIB_DIR}. Please install the blosc2 Python package with bundled libraries.")
+if(NOT BLOSC2_INCLUDE_DIR OR NOT BLOSC2_LIBRARIES)
+    message(FATAL_ERROR "Could not find Blosc2 headers/libraries. Install python-blosc2 with bundled libraries, or install c-blosc2 and set CMAKE_PREFIX_PATH/PKG_CONFIG_PATH.")
 endif()
 
 # ============================================================

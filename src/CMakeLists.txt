@@ -6,13 +6,15 @@
 # License: GNU Affero General Public License v3.0 (see LICENSE.txt)
 ##############################################################################
 
-set(GRK_BUILD_LIBPNG OFF)
-set(GRK_BUILD_JPEG OFF)
-set(GRK_BUILD_CORE_EXAMPLES OFF)
+set(GRK_BUILD_LIBPNG OFF CACHE BOOL "Build libpng library" FORCE)
+set(GRK_BUILD_LIBTIFF OFF CACHE BOOL "Build libtiff library" FORCE)
+set(GRK_BUILD_LCMS2 ON CACHE BOOL "Build lcms2 library" FORCE)
+set(GRK_BUILD_JPEG OFF CACHE BOOL "Build jpeg library" FORCE)
+set(GRK_BUILD_CORE_EXAMPLES OFF CACHE BOOL "Build Grok core examples" FORCE)
 
 # Avoid adding unneeded files to the wheel
-set(GRK_BUILD_PKGCONFIG_FILES OFF)
-set(GRK_BUILD_CODEC OFF)
+set(GRK_BUILD_PKGCONFIG_FILES OFF CACHE BOOL "Build Grok pkg-config files" FORCE)
+set(GRK_BUILD_CODEC OFF CACHE BOOL "Build Grok codec executables" FORCE)
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
 # Build statically
