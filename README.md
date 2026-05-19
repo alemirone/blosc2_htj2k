@@ -115,8 +115,9 @@ is meant to be copy-pasted in a fresh terminal.
 <summary>Copy-paste full source quickstart</summary>
 
 ```bash
-mkdir -p /tmp/blosc2_htj2k_quickstart
-cd /tmp/blosc2_htj2k_quickstart
+workdir="$(mktemp -d -p /tmp blosc2_htj2k_quickstart_XXXXXXXX)"
+cd "$workdir"
+echo "Using quickstart directory: $PWD"
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -205,7 +206,7 @@ PY
 After this, the same environment can be reused:
 
 ```bash
-cd /tmp/blosc2_htj2k_quickstart
+cd /tmp/blosc2_htj2k_quickstart_XXXXXXXX
 source .venv/bin/activate
 export BLOSC2_PACKAGE="$(python - <<'PY'
 from pathlib import Path
