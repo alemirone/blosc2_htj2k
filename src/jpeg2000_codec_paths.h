@@ -1,9 +1,8 @@
 /*********************************************************************
- * blosc2_htj2k: J2K and HTJ2K codec dispatch paths.
+ * blosc2_htj2k: JPEG2000 codec dispatch paths.
  *
  * Responsibilities:
- * - call the selected family-specific plugin when one is available;
- * - keep the J2K native Grok fallback separate from HTJ2K plugin-only policy;
+ * - call the selected family-specific plugin;
  * - centralize clear errors for unsupported plugin capabilities.
  *
  * Copyright (c) 2026  The Blosc Development Team <blosc@blosc.org>
@@ -21,18 +20,17 @@
 
 namespace blosc2_htj2k_detail {
 
-// Encode regular J2K through a replacement plugin, or through native Grok when
-// no J2K plugin was configured.
-int encode_j2k_with_plugin_or_native(const uint8_t *input,
-                                     int32_t input_len,
-                                     uint8_t *output,
-                                     int32_t output_len,
-                                     uint8_t meta,
-                                     blosc2_cparams *cparams,
-                                     const void *chunk,
-                                     const j2k_codec_request_t &request,
-                                     j2k_codec_plugin_t *plugin,
-                                     bool debug);
+// Encode regular J2K through a selected backend plugin.
+int encode_j2k_with_plugin(const uint8_t *input,
+                           int32_t input_len,
+                           uint8_t *output,
+                           int32_t output_len,
+                           uint8_t meta,
+                           blosc2_cparams *cparams,
+                           const void *chunk,
+                           const j2k_codec_request_t &request,
+                           j2k_codec_plugin_t *plugin,
+                           bool debug);
 
 // Encode HTJ2K through a replacement plugin.  There is intentionally no native
 // Grok fallback for HTJ2K in this MR.
@@ -47,18 +45,17 @@ int encode_htj2k_with_plugin(const uint8_t *input,
                              htj2k_codec_plugin_t *plugin,
                              bool debug);
 
-// Decode regular J2K through a replacement plugin, or through native Grok when
-// no J2K plugin was configured.
-int decode_j2k_with_plugin_or_native(const uint8_t *input,
-                                     int32_t input_len,
-                                     uint8_t *output,
-                                     int32_t output_len,
-                                     uint8_t meta,
-                                     blosc2_dparams *dparams,
-                                     const void *chunk,
-                                     const j2k_codec_request_t &request,
-                                     j2k_codec_plugin_t *plugin,
-                                     bool debug);
+// Decode regular J2K through a selected backend plugin.
+int decode_j2k_with_plugin(const uint8_t *input,
+                           int32_t input_len,
+                           uint8_t *output,
+                           int32_t output_len,
+                           uint8_t meta,
+                           blosc2_dparams *dparams,
+                           const void *chunk,
+                           const j2k_codec_request_t &request,
+                           j2k_codec_plugin_t *plugin,
+                           bool debug);
 
 // Decode HTJ2K through a replacement plugin selected by the HTJ2K loader.
 int decode_htj2k_with_plugin(const uint8_t *input,

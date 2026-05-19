@@ -2,10 +2,9 @@
  * Runtime replacement API for blosc2_htj2k HTJ2K backends.
  *
  * A replacement backend is a shared library that exports a single
- * HTJ2K_CODEC_PLUGIN symbol.  blosc2_htj2k loads it at runtime when
- * BLOSC2_HTJ2K_HTJ2K_REPLACEMENT_DIR points to the directory containing the
- * shared library.  The ABI version and struct size are checked before any
- * function pointer is used, so incompatible plugins are rejected cleanly.
+ * HTJ2K_CODEC_PLUGIN symbol.  The runtime discovers backend libraries from the
+ * configured plugin root, manifest, or BLOSC2_HTJ2K_* environment.  The ABI
+ * version and struct size are checked before any function pointer is used.
  *
  * Copyright (c) 2026  The Blosc Development Team <blosc@blosc.org>
  * https://blosc.org

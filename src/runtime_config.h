@@ -28,7 +28,6 @@ struct PluginCandidate {
     PluginFamily family;
     std::string backend;
     std::filesystem::path path;
-    bool native = false;
     bool selected = false;
     bool legacy = false;
     bool direct = false;

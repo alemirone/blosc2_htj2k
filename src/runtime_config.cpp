@@ -521,10 +521,6 @@ std::vector<PluginCandidate> named_candidates_locked(PluginFamily family,
     if (backend.empty()) {
         return candidates;
     }
-    if (family == PluginFamily::J2K && backend == "native") {
-        return candidates;
-    }
-
     if (has_path_separator(backend) || fs::path(backend).is_absolute()) {
         fs::path path(backend);
         std::string name = path.filename().string();
@@ -545,23 +541,13 @@ std::vector<PluginCandidate> named_candidates_locked(PluginFamily family,
     return candidates;
 }
 
-PluginCandidate native_j2k_candidate(bool selected) {
-    PluginCandidate native;
-    native.family = PluginFamily::J2K;
-    native.backend = "native";
-    native.native = true;
-    native.selected = selected;
-    return native;
-}
-
 void append_unique_candidate(std::vector<PluginCandidate> &candidates,
                              const PluginCandidate &candidate) {
     auto duplicate = std::find_if(candidates.begin(), candidates.end(),
                                   [&](const PluginCandidate &other) {
                                       return other.family == candidate.family &&
                                              other.backend == candidate.backend &&
-                                             other.path == candidate.path &&
-                                             other.native == candidate.native;
+                                             other.path == candidate.path;
                                   });
     if (duplicate == candidates.end()) {
         candidates.push_back(candidate);
@@ -575,10 +561,6 @@ std::vector<PluginCandidate> priority_candidates_locked(PluginFamily family,
     std::vector<PluginCandidate> candidates;
     for (const std::string &backend : backends) {
         if (backend.empty()) {
-            continue;
-        }
-        if (family == PluginFamily::J2K && backend == "native") {
-            append_unique_candidate(candidates, native_j2k_candidate(selected));
             continue;
         }
         for (const PluginCandidate &candidate : named_candidates_locked(family, config, backend, selected)) {

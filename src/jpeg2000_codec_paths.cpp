@@ -1,5 +1,5 @@
 /*********************************************************************
- * blosc2_htj2k: J2K and HTJ2K codec dispatch paths.
+ * blosc2_htj2k: JPEG2000 codec dispatch paths.
  *
  * This file receives already-built requests and already-discovered plugins.  It
  * does not read environment variables or open shared libraries.
@@ -13,34 +13,18 @@
 
 #include <cstdio>
 
-extern "C" int blosc2_htj2k_native_encoder(const uint8_t *input,
-                                           int32_t input_len,
-                                           uint8_t *output,
-                                           int32_t output_len,
-                                           uint8_t meta,
-                                           blosc2_cparams *cparams,
-                                           const void *chunk);
-
-extern "C" int blosc2_htj2k_native_decoder(const uint8_t *input,
-                                           int32_t input_len,
-                                           uint8_t *output,
-                                           int32_t output_len,
-                                           uint8_t meta,
-                                           blosc2_dparams *dparams,
-                                           const void *chunk);
-
 namespace blosc2_htj2k_detail {
 
-int encode_j2k_with_plugin_or_native(const uint8_t *input,
-                                     int32_t input_len,
-                                     uint8_t *output,
-                                     int32_t output_len,
-                                     uint8_t meta,
-                                     blosc2_cparams *cparams,
-                                     const void *chunk,
-                                     const j2k_codec_request_t &request,
-                                     j2k_codec_plugin_t *plugin,
-                                     bool debug) {
+int encode_j2k_with_plugin(const uint8_t *input,
+                           int32_t input_len,
+                           uint8_t *output,
+                           int32_t output_len,
+                           uint8_t meta,
+                           blosc2_cparams *cparams,
+                           const void *chunk,
+                           const j2k_codec_request_t &request,
+                           j2k_codec_plugin_t *plugin,
+                           bool debug) {
     if (plugin) {
         if (!plugin->vtable.supports(&request)) {
             fprintf(stderr,
@@ -55,7 +39,8 @@ int encode_j2k_with_plugin_or_native(const uint8_t *input,
         return plugin->vtable.encode(input, input_len, output, output_len, meta, cparams, chunk, &request);
     }
 
-    return blosc2_htj2k_native_encoder(input, input_len, output, output_len, meta, cparams, chunk);
+    fprintf(stderr, "[blosc2_htj2k] J2K backend plugin is required\n");
+    return -1;
 }
 
 int encode_htj2k_with_plugin(const uint8_t *input,
@@ -88,16 +73,16 @@ int encode_htj2k_with_plugin(const uint8_t *input,
     return plugin->vtable.encode(input, input_len, output, output_len, meta, cparams, chunk, &request);
 }
 
-int decode_j2k_with_plugin_or_native(const uint8_t *input,
-                                     int32_t input_len,
-                                     uint8_t *output,
-                                     int32_t output_len,
-                                     uint8_t meta,
-                                     blosc2_dparams *dparams,
-                                     const void *chunk,
-                                     const j2k_codec_request_t &request,
-                                     j2k_codec_plugin_t *plugin,
-                                     bool debug) {
+int decode_j2k_with_plugin(const uint8_t *input,
+                           int32_t input_len,
+                           uint8_t *output,
+                           int32_t output_len,
+                           uint8_t meta,
+                           blosc2_dparams *dparams,
+                           const void *chunk,
+                           const j2k_codec_request_t &request,
+                           j2k_codec_plugin_t *plugin,
+                           bool debug) {
     if (plugin) {
         if (!plugin->vtable.supports(&request)) {
             fprintf(stderr, "[blosc2_htj2k] J2K plugin %s does not support this decode request\n",
@@ -111,7 +96,8 @@ int decode_j2k_with_plugin_or_native(const uint8_t *input,
         return plugin->vtable.decode(input, input_len, output, output_len, meta, dparams, chunk, &request);
     }
 
-    return blosc2_htj2k_native_decoder(input, input_len, output, output_len, meta, dparams, chunk);
+    fprintf(stderr, "[blosc2_htj2k] J2K backend plugin is required\n");
+    return -1;
 }
 
 int decode_htj2k_with_plugin(const uint8_t *input,

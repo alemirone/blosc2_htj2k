@@ -276,9 +276,6 @@ bool is_valid_htj2k_plugin_descriptor(const htj2k_codec_plugin_t *plugin,
 
 std::vector<fs::path> candidate_library_paths(const PluginCandidate &candidate) {
     std::vector<fs::path> libraries;
-    if (candidate.native) {
-        return libraries;
-    }
 
     std::error_code ec;
     if (fs::is_regular_file(candidate.path, ec)) {
@@ -315,14 +312,6 @@ struct PluginProbeResult {
 PluginProbeResult probe_candidate(const PluginCandidate &candidate, bool debug) {
     PluginProbeResult result;
     result.candidate = candidate;
-    if (candidate.native) {
-        result.exists = true;
-        result.loadable = true;
-        result.abi_valid = true;
-        result.plugin_name = "native";
-        result.plugin_version = "built-in";
-        return result;
-    }
 
     std::error_code ec;
     result.exists = fs::exists(candidate.path, ec);
@@ -377,7 +366,6 @@ PluginProbeResult probe_candidate(const PluginCandidate &candidate, bool debug) 
 
 bool same_candidate_identity(const PluginCandidate &lhs, const PluginCandidate &rhs) {
     return lhs.family == rhs.family &&
-           lhs.native == rhs.native &&
            lhs.backend == rhs.backend &&
            lhs.path == rhs.path;
 }
@@ -389,16 +377,6 @@ void mark_selected_plugins(std::vector<PluginProbeResult> &results) {
 
     for (PluginFamily family : {PluginFamily::J2K, PluginFamily::HTJ2K}) {
         std::vector<PluginCandidate> load_candidates = plugin_load_candidates(family);
-        if (family == PluginFamily::J2K && load_candidates.empty()) {
-            for (PluginProbeResult &result : results) {
-                if (result.candidate.native && result.candidate.family == PluginFamily::J2K) {
-                    result.candidate.selected = true;
-                    break;
-                }
-            }
-            continue;
-        }
-
         bool selected = false;
         for (const PluginCandidate &load_candidate : load_candidates) {
             for (PluginProbeResult &result : results) {
@@ -424,7 +402,6 @@ void append_plugin_json(std::ostringstream &out, const PluginProbeResult &result
     out << "\"library\":\"" << json_escape(result.library) << "\",";
     out << "\"name\":\"" << json_escape(result.plugin_name) << "\",";
     out << "\"version\":\"" << json_escape(result.plugin_version) << "\",";
-    out << "\"native\":" << (result.candidate.native ? "true" : "false") << ",";
     out << "\"legacy\":" << (result.candidate.legacy ? "true" : "false") << ",";
     out << "\"direct\":" << (result.candidate.direct ? "true" : "false") << ",";
     out << "\"exists\":" << (result.exists ? "true" : "false") << ",";
@@ -450,12 +427,6 @@ j2k_codec_plugin_t* load_j2k_replacement_plugin() {
 
     bool debug = (getenv("BLOSC2_HTJ2K_DEBUG") != nullptr);
     for (const PluginCandidate &candidate : candidates) {
-        if (candidate.native) {
-            if (debug) {
-                fprintf(stderr, "[blosc2_htj2k] Using native J2K backend\n");
-            }
-            return nullptr;
-        }
         for (const fs::path &libpath : candidate_library_paths(candidate)) {
             plugin_library_handle_t handle = open_plugin_library(libpath, debug);
             if (!handle) {

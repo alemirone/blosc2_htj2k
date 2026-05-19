@@ -21,7 +21,7 @@ import numpy as np
 __version__ = "0.3.6.dev0"
 
 CODEC_NAME = "htj2k"
-CODEC_ID = 161
+CODEC_ID = 40
 
 # On Windows, pre-load blosc2.dll before loading blosc2_htj2k.dll
 if platform.system() == "Windows":
@@ -335,14 +335,7 @@ def last_error():
 
 
 def register_codec():
-    """Register the temporary Blosc2 dynamic codec id for HTJ2K."""
-    try:
-        import blosc2
-        blosc2.register_codec(CODEC_NAME, CODEC_ID)
-    except Exception as exc:
-        if "already" not in str(exc).lower() and "registered" not in str(exc).lower():
-            raise
-
+    """Verify that the active Blosc2 runtime knows the official HTJ2K codec id."""
     rc = lib.blosc2_htj2k_register_codec()
     if rc != 0:
         raise RuntimeError(last_error() or "failed to register blosc2_htj2k codec")
@@ -487,7 +480,7 @@ def selftest(backends="available"):
 
     broken = [
         p for p in plugins
-        if not p.get("native") and p.get("exists") and (not p.get("loadable") or not p.get("abi_valid"))
+        if p.get("exists") and (not p.get("loadable") or not p.get("abi_valid"))
     ]
     if broken and backends == "available":
         raise RuntimeError(json.dumps({"ok": False, "broken_plugins": broken}, indent=2))
