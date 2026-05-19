@@ -74,32 +74,58 @@ Kakadu is optional and is not redistributed by this project.
 
 ## Hands-On Quick Start
 
-For now this plugin depends on the experimental `c-blosc2` and
-`python-blosc2` branches that define and expose the proposed J2K/HTJ2K codec
-IDs.  The quick start is therefore a full-stack install, but it follows the
-same packaging model as the normal `python-blosc2` wheel: the experimental
-`python-blosc2` branch bundles the matching experimental `c-blosc2` runtime in
-`blosc2/lib`.
+For now this plugin depends on the experimental `c-blosc2` and `python-blosc2`
+branches that define and expose the proposed J2K/HTJ2K codec IDs.  The quick
+start is therefore a full-stack install.
 
-Once these branches are merged and released upstream, the `python-blosc2`
-clone/build step collapses back to a normal released `blosc2` dependency.
+The important point is that `hdf5plugin` must be built against the same
+experimental `libblosc2` runtime.  The standard `hdf5plugin` wheel embeds its
+own c-blosc2 copy, so changing `LD_LIBRARY_PATH` is not enough for that wheel to
+know codec id `40`.  The commands below rebuild only the HDF5 Blosc2 filter
+from `hdf5plugin` with `HDF5PLUGIN_SYSTEM_LIBRARIES=blosc2`, which makes that
+filter use the experimental `libblosc2` installed by `python-blosc2`.
+
+This block is meant to be copy-pasted in a fresh terminal:
 
 ```bash
-set -x
-set -euo pipefail
-
-mkdir blosc2_htj2k_quickstart
-cd blosc2_htj2k_quickstart
+mkdir -p /tmp/blosc2_htj2k_quickstart
+cd /tmp/blosc2_htj2k_quickstart
 
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip setuptools wheel
-python -m pip install scikit-build-core cython numpy
-export CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-20}"
+python -m pip install scikit-build-core cython numpy pkgconfig py-cpuinfo h5py
+export CMAKE_BUILD_PARALLEL_LEVEL=20
 
+# Install python-blosc2 from the experimental branch.  This branch bundles the
+# matching experimental c-blosc2 runtime in site-packages/blosc2/lib.
 git clone https://github.com/alemirone/python-blosc2.git
 git -C python-blosc2 checkout add_j2k_htj2k_custom_codecs
 python -m pip install -v --no-build-isolation ./python-blosc2
+
+export BLOSC2_PACKAGE="$(python - <<'PY'
+from pathlib import Path
+import blosc2
+print(Path(blosc2.__file__).resolve().parent)
+PY
+)"
+
+# Make pkg-config point to the libblosc2 shipped by this venv installation.
+# This keeps the following hdf5plugin build on the same experimental c-blosc2.
+cat > "${BLOSC2_PACKAGE}/lib/pkgconfig/blosc2.pc" <<EOF
+libdir=${BLOSC2_PACKAGE}/lib
+includedir=${BLOSC2_PACKAGE}/include
+
+Name: blosc2
+Description: A blocking, shuffling and lossless compression library
+URL: https://blosc.org/
+Version: 3.0.4.dev
+Libs: -L\${libdir} -Wl,-rpath,\${libdir} -l:libblosc2.so.8
+Cflags: -I\${includedir}
+EOF
+
+export PKG_CONFIG_PATH="${BLOSC2_PACKAGE}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+export LD_LIBRARY_PATH="${BLOSC2_PACKAGE}/lib:${LD_LIBRARY_PATH:-}"
 
 python - <<'PY'
 import blosc2
@@ -108,36 +134,136 @@ print("J2K codec:", blosc2.Codec.J2K)
 print("HTJ2K codec:", blosc2.Codec.HTJ2K)
 PY
 
+# Rebuild hdf5plugin so libh5blosc2 uses the experimental libblosc2 above
+# instead of an embedded c-blosc2 copy.
+git clone https://github.com/silx-kit/hdf5plugin.git
+CFLAGS="${CFLAGS:-} -DBLOSC2_MAX_DIM=B2ND_MAX_DIM" \
+HDF5PLUGIN_SYSTEM_LIBRARIES=blosc2 \
+HDF5PLUGIN_STRIP=blosc,bshuf,bzip2,fcidecomp,lz4,sperr,sz,sz3,zfp,zstd \
+  python -m pip install -v --no-build-isolation --no-deps ./hdf5plugin
+
+# Install the HTJ2K plugin.  The default manifest selects kakadu first when it
+# is usable, then openhtj2k.  No BLOSC2_HTJ2K_BACKEND variable is needed for
+# this test.
 git clone --recursive https://github.com/alemirone/blosc2_htj2k.git
-python -m pip install -v --no-build-isolation ./blosc2_htj2k
+python -m pip install -v --no-build-isolation --no-deps ./blosc2_htj2k
+
+export HTJ2K_PACKAGE="$(python - <<'PY'
+from pathlib import Path
+import blosc2_htj2k
+print(Path(blosc2_htj2k.__file__).resolve().parent)
+PY
+)"
+export LD_LIBRARY_PATH="${BLOSC2_PACKAGE}/lib:${HTJ2K_PACKAGE}:${LD_LIBRARY_PATH:-}"
+
+# Build a small stack, write an uncompressed HDF5 file and an HTJ2K-compressed
+# HDF5 file, then check the decoded values.
+python ./blosc2_htj2k/examples/quickstart.py
+
+# Read the compressed HDF5 file in the simple Python deployment mode:
+# hdf5plugin only.  Backend choice comes from blosc2_htj2k_plugins.json.
+env -u HDF5_PLUGIN_PATH -u BLOSC2_HTJ2K_BACKEND -u BLOSC2_HTJ2K_PLUGIN_PATH python - <<'PY'
+import hdf5plugin
+import h5py
+
+with h5py.File("quickstart_output/htj2k_stack_blosc2_htj2k.h5", "r") as h5f:
+    data = h5f["entry/data"][...]
+
+print("read with hdf5plugin only:", data.shape, data.dtype, int(data.sum()))
+PY
 ```
 
-Run the quick example:
+After this, the same environment can be reused:
+
+```bash
+cd /tmp/blosc2_htj2k_quickstart
+source .venv/bin/activate
+export BLOSC2_PACKAGE="$(python - <<'PY'
+from pathlib import Path
+import blosc2
+print(Path(blosc2.__file__).resolve().parent)
+PY
+)"
+export HTJ2K_PACKAGE="$(python - <<'PY'
+from pathlib import Path
+import blosc2_htj2k
+print(Path(blosc2_htj2k.__file__).resolve().parent)
+PY
+)"
+export LD_LIBRARY_PATH="${BLOSC2_PACKAGE}/lib:${HTJ2K_PACKAGE}:${LD_LIBRARY_PATH:-}"
+```
+
+Once the codec IDs are merged and released upstream, the `python-blosc2`
+clone/build step collapses back to a normal released `blosc2` dependency.  Once
+`hdf5plugin` is released against a c-blosc2 containing these IDs, the
+`hdf5plugin` rebuild step also collapses back to `python -m pip install
+hdf5plugin`.
+
+The quickstart script can also be run manually.  The basic lossless example is:
+
+```bash
+python ./blosc2_htj2k/examples/quickstart.py
+```
+
+This registers codec id `40`, lets the installed manifest choose the first
+usable HTJ2K backend, creates a deterministic `uint16` stack, compresses it as
+HTJ2K, decodes it, and checks exact equality with the input.  It also writes two
+HDF5 files under `quickstart_output/`: an uncompressed reference stack and the
+same stack compressed with the HDF5 Blosc2 filter using codec id `40`.  The
+script prints the exact file paths, dataset path, compressed size, and error
+metrics.  The OpenHTJ2K backend is built from the package submodule when no
+external OpenHTJ2K installation is configured.
+
+To force the OpenHTJ2K backend explicitly:
 
 ```bash
 python ./blosc2_htj2k/examples/quickstart.py --backend openhtj2k
 ```
 
-The quick example should report codec id `40`, backend `openhtj2k`, and exact
-lossless equality.  The OpenHTJ2K backend is built from the package submodule
-when no external OpenHTJ2K installation is configured.
-
-The same example can use float quantization:
+Run the float32 quantization example:
 
 ```bash
-python ./blosc2_htj2k/examples/quickstart.py --backend openhtj2k --float-mode uint16
+python ./blosc2_htj2k/examples/quickstart.py --float-mode uint16
 ```
 
-and can exercise lossy rate mode:
+This creates a deterministic `float32` stack, quantizes each chunk to `uint16`,
+compresses the quantized integer image as HTJ2K, decodes it back to `float32`,
+and checks that the measured error is within the expected quantization bound.
+It writes the matching raw and compressed HDF5 files as well.
+
+Run the lossy rate-control example:
 
 ```bash
-python ./blosc2_htj2k/examples/quickstart.py --backend openhtj2k --lossy --codec-meta 80
+python ./blosc2_htj2k/examples/quickstart.py --lossy --codec-meta 80
 ```
 
-The script creates a deterministic `uint16` image, compresses it with codec id
-`40`, decodes it, and prints compression and error metrics.  In lossless mode
-it checks exact equality.  In lossy mode it checks that the decoded image is not
-bit-identical but remains within bounded error.
+This creates the same deterministic `uint16` stack, asks the backend for lossy
+compression through `codec_meta`, decodes it, and checks that the decoded image
+is not bit-identical but remains within bounded error.  In this prototype,
+`codec_meta=80` is interpreted as `8.0` in the backend rate mode.
+The HDF5 pair is still written so the user can inspect the raw and compressed
+stack files produced by the quick start.
+
+Open the generated HDF5 files from a Python prompt.  In Python, importing
+`hdf5plugin` is enough; do not pre-load the same plugin through
+`HDF5_PLUGIN_PATH` before the import:
+
+```python
+>>> import h5py
+>>> import hdf5plugin
+>>> raw = h5py.File("quickstart_output/htj2k_stack_raw.h5", "r")
+>>> compressed = h5py.File("quickstart_output/htj2k_stack_blosc2_htj2k.h5", "r")
+>>> raw["entry/data"]
+<HDF5 dataset "data": shape (4, 64, 96), type "<u2">
+>>> compressed["entry/data"]
+<HDF5 dataset "data": shape (4, 64, 96), type "<u2">
+>>> stack = compressed["entry/data"][...]
+>>> stack.shape, stack.dtype
+((4, 64, 96), dtype('uint16'))
+>>> (stack == raw["entry/data"][...]).all()
+True
+>>> raw.close(); compressed.close()
+```
 
 Minimal Python usage:
 
@@ -159,6 +285,10 @@ cparams = {
 array = blosc2.asarray(data, chunks=data.shape, blocks=data.shape, cparams=cparams)
 np.testing.assert_array_equal(array[...], data)
 ```
+
+This is the minimal in-process API path: register the HTJ2K codec in the active
+Blosc2 instance, choose a backend, compress a NumPy array into a Blosc2 NDArray,
+and read it back.
 
 Lossy mode uses `codec_meta`:
 
@@ -408,11 +538,8 @@ Only rates below `25.6` are supported through this one-byte notation.
 ## HDF5 And Loader Order
 
 When reading or writing through HDF5, the HDF5 Blosc2 filter must also be
-discoverable:
-
-```bash
-export HDF5_PLUGIN_PATH="$(python -c 'import hdf5plugin; print(hdf5plugin.PLUGIN_PATH)')"
-```
+loaded.  In Python, this is normally done by `import hdf5plugin`.  In
+non-Python programs, this is normally done through `HDF5_PLUGIN_PATH`.
 
 For Python processes that use the Python API directly, importing
 `blosc2_htj2k` loads the codec library with global visibility and checks that
@@ -423,22 +550,23 @@ import hdf5plugin
 import blosc2_htj2k
 import h5py
 
-blosc2_htj2k.configure(backend="openhtj2k")
+blosc2_htj2k.configure()  # backend selected by blosc2_htj2k_plugins.json
 ```
 
-This is enough for Python code that calls the `blosc2_htj2k` registry check
-before compression/decompression.  It is not always enough for a fully
-transparent HDF5-only path, because the HDF5 Blosc2 filter may use a separate
-Blosc2 library instance.  In that case the filter can find Blosc2 and the HDF5
-plugin, but the process may still need the codec library to be loaded before
-the first HDF5 callback.
+Use `blosc2_htj2k.configure(backend="openhtj2k")` only when you want to force a
+backend and bypass the manifest priority.
 
-`LD_LIBRARY_PATH` only makes shared libraries discoverable.  `HDF5_PLUGIN_PATH`
-only makes the HDF5 Blosc2 filter discoverable.  With the official codec id,
-c-blosc2 must already contain the HTJ2K registry entry.  `LD_PRELOAD` does not
-replace that registry support; it is a loader-order helper for applications
-that cannot import `blosc2_htj2k` or call `blosc2_htj2k_register_codec()` before
-HDF5 starts using Blosc2.
+`LD_LIBRARY_PATH` only makes shared libraries discoverable.  For Python,
+`import hdf5plugin` registers the HDF5 Blosc2 filter and initializes the HDF5
+function table used by the filter.  Do not set `HDF5_PLUGIN_PATH` to the same
+`hdf5plugin/plugins` directory before importing `hdf5plugin`, otherwise HDF5 can
+load the filter first and bypass that initialization.  If this happens in an
+interactive session, call `hdf5plugin.register("blosc2", force=True)`.
+
+For transparent HDF5-only use, the HDF5 Blosc2 filter must also use a c-blosc2
+runtime that already contains the HTJ2K registry entry.  If `hdf5plugin` embeds
+an older c-blosc2 copy, the filter will fail before `libblosc2_htj2k.so` can be
+used.
 
 Transparent HDF5 example with `h5py` and `hdf5plugin`:
 
@@ -446,14 +574,13 @@ Transparent HDF5 example with `h5py` and `hdf5plugin`:
 export HTJ2K_PACKAGE=/path/to/site-packages/blosc2_htj2k
 export BLOSC2_PACKAGE=/path/to/site-packages/blosc2
 
-export HDF5_PLUGIN_PATH=/path/to/hdf5plugin/plugins
-export LD_LIBRARY_PATH="${HTJ2K_PACKAGE}:${BLOSC2_PACKAGE}/lib:${LD_LIBRARY_PATH:-}"
-export LD_PRELOAD="${HTJ2K_PACKAGE}/libblosc2_jpeg2000_bootstrap.so${LD_PRELOAD:+:${LD_PRELOAD}}"
-
-export BLOSC2_HTJ2K_BACKEND=openhtj2k
+export LD_LIBRARY_PATH="${BLOSC2_PACKAGE}/lib:${HTJ2K_PACKAGE}:${LD_LIBRARY_PATH:-}"
 
 python my_hdf5_reader_or_writer.py
 ```
+
+No `BLOSC2_HTJ2K_BACKEND` variable is required for the default installed
+layout: the backend is selected by `blosc2_htj2k_plugins.json`.
 
 If the Kakadu backend is selected, add the Kakadu library directory as well:
 
@@ -472,7 +599,8 @@ blosc2_htj2k_register_codec();
 
 blosc2_htj2k_runtime_config cfg = {0};
 cfg.struct_size = sizeof(cfg);
-cfg.backend = "openhtj2k";
+/* Leave cfg.backend NULL to use blosc2_htj2k_plugins.json.
+   Set cfg.backend = "openhtj2k" or "kakadu" to force a backend. */
 
 if (blosc2_htj2k_configure(&cfg) != 0) {
     fprintf(stderr, "%s\n", blosc2_htj2k_last_error());
@@ -480,16 +608,35 @@ if (blosc2_htj2k_configure(&cfg) != 0) {
 ```
 
 For unmodified C++ programs, HDF5 command-line tools, web servers, or web
-clients that cannot call this API, preload the bootstrap library:
+clients that cannot call this API, use an HDF5 Blosc2 filter built against the
+same HDF5 runtime and the updated c-blosc2.  Such a process discovers the HDF5
+filter through `HDF5_PLUGIN_PATH` and discovers the HTJ2K codec through
+`LD_LIBRARY_PATH`:
 
 ```bash
 export HDF5_PLUGIN_PATH=/path/to/hdf5/plugins
-export LD_LIBRARY_PATH=/path/to/blosc2/lib:/path/to/blosc2_htj2k:/path/to/openhtj2k/lib:${LD_LIBRARY_PATH:-}
-export LD_PRELOAD=/path/to/blosc2_htj2k/libblosc2_jpeg2000_bootstrap.so${LD_PRELOAD:+:${LD_PRELOAD}}
+export LD_LIBRARY_PATH=/path/to/blosc2/lib:/path/to/blosc2_htj2k:${LD_LIBRARY_PATH:-}
 ```
 
-The bootstrap calls `blosc2_init()` early so the c-blosc2 registry is populated
-before the first HDF5 callback.  The expected registry entries are:
+If the HDF5 filter was built with an embedded old c-blosc2 copy, rebuild it with:
+
+```bash
+export HDF5PLUGIN_SYSTEM_LIBRARIES=blosc2
+export HDF5PLUGIN_STRIP=blosc,bshuf,bzip2,fcidecomp,lz4,sperr,sz,sz3,zfp,zstd
+export CFLAGS="${CFLAGS:-} -DBLOSC2_MAX_DIM=B2ND_MAX_DIM"
+export PKG_CONFIG_PATH=/path/to/blosc2/lib/pkgconfig:${PKG_CONFIG_PATH:-}
+export LD_LIBRARY_PATH=/path/to/blosc2/lib:${LD_LIBRARY_PATH:-}
+python -m pip install -v --no-build-isolation --force-reinstall --no-deps /path/to/hdf5plugin
+```
+
+As a temporary local workaround for an already-built static filter, preloading
+the updated `libblosc2` can force symbol interposition:
+
+```bash
+export LD_PRELOAD=/path/to/blosc2/lib/libblosc2.so${LD_PRELOAD:+:${LD_PRELOAD}}
+```
+
+The expected registry entries are:
 
 ```text
 j2k   -> 39

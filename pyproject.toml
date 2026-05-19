@@ -40,6 +40,8 @@ dependencies = [
 
 [project.optional-dependencies]
 h5py-test = [
+    "h5py",
+    "hdf5plugin",
     "pytest",  # to run tests
 ]
 
