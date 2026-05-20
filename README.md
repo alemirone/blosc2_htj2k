@@ -152,12 +152,7 @@ git clone https://github.com/alemirone/python-blosc2.git
 git -C python-blosc2 checkout add_j2k_htj2k_custom_codecs
 python -m pip install -v --no-build-isolation ./python-blosc2
 
-export BLOSC2_PACKAGE="$(python - <<'PY'
-from pathlib import Path
-import blosc2
-print(Path(blosc2.__file__).resolve().parent)
-PY
-)"
+export BLOSC2_PACKAGE="$(python -c 'from pathlib import Path; import blosc2; print(Path(blosc2.__file__).resolve().parent)')"
 
 # Make pkg-config point to the libblosc2 shipped by this venv installation.
 # This keeps the following hdf5plugin build on the same experimental c-blosc2.
@@ -198,12 +193,7 @@ HDF5PLUGIN_STRIP=blosc,bshuf,bzip2,fcidecomp,lz4,sperr,sz,sz3,zfp,zstd \
 git clone --recursive https://github.com/alemirone/blosc2_htj2k.git
 python -m pip install -v --no-build-isolation --no-deps ./blosc2_htj2k
 
-export HTJ2K_PACKAGE="$(python - <<'PY'
-from pathlib import Path
-import blosc2_htj2k
-print(Path(blosc2_htj2k.__file__).resolve().parent)
-PY
-)"
+export HTJ2K_PACKAGE="$(python -c 'from pathlib import Path; import blosc2_htj2k; print(Path(blosc2_htj2k.__file__).resolve().parent)')"
 export LD_LIBRARY_PATH="${BLOSC2_PACKAGE}/lib:${HTJ2K_PACKAGE}:${LD_LIBRARY_PATH:-}"
 
 # Build a small stack, write an uncompressed HDF5 file and an HTJ2K-compressed
@@ -219,11 +209,7 @@ h5c++ -std=c++17 ./blosc2_htj2k/examples/cpp_quickstart.cpp \
   -Wl,-rpath,"${BLOSC2_PACKAGE}/lib" \
   -lblosc2
 
-export HDF5_PLUGIN_PATH="$(python - <<'PY'
-import hdf5plugin
-print(hdf5plugin.PLUGINS_PATH)
-PY
-)"
+export HDF5_PLUGIN_PATH="$(python -c 'import hdf5plugin; print(hdf5plugin.PLUGINS_PATH)')"
 ./cpp_htj2k_quickstart
 
 # Read the compressed HDF5 file in the simple Python deployment mode:
@@ -246,18 +232,8 @@ After this, the same environment can be reused:
 ```bash
 cd /tmp/blosc2_htj2k_quickstart_XXXXXXXX
 source .venv/bin/activate
-export BLOSC2_PACKAGE="$(python - <<'PY'
-from pathlib import Path
-import blosc2
-print(Path(blosc2.__file__).resolve().parent)
-PY
-)"
-export HTJ2K_PACKAGE="$(python - <<'PY'
-from pathlib import Path
-import blosc2_htj2k
-print(Path(blosc2_htj2k.__file__).resolve().parent)
-PY
-)"
+export BLOSC2_PACKAGE="$(python -c 'from pathlib import Path; import blosc2; print(Path(blosc2.__file__).resolve().parent)')"
+export HTJ2K_PACKAGE="$(python -c 'from pathlib import Path; import blosc2_htj2k; print(Path(blosc2_htj2k.__file__).resolve().parent)')"
 export LD_LIBRARY_PATH="${BLOSC2_PACKAGE}/lib:${HTJ2K_PACKAGE}:${LD_LIBRARY_PATH:-}"
 ```
 
@@ -327,11 +303,7 @@ h5c++ -std=c++17 ./blosc2_htj2k/examples/cpp_quickstart.cpp \
   -Wl,-rpath,"${BLOSC2_PACKAGE}/lib" \
   -lblosc2
 
-export HDF5_PLUGIN_PATH="$(python - <<'PY'
-import hdf5plugin
-print(hdf5plugin.PLUGINS_PATH)
-PY
-)"
+export HDF5_PLUGIN_PATH="$(python -c 'import hdf5plugin; print(hdf5plugin.PLUGINS_PATH)')"
 ./cpp_htj2k_quickstart
 ```
 
