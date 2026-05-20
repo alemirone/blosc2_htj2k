@@ -230,7 +230,7 @@ PY
 After this, the same environment can be reused:
 
 ```bash
-cd /tmp/blosc2_htj2k_quickstart_XXXXXXXX
+# Run these commands from the quickstart directory created above, e.g. /tmp/blosc2_htj2k_quickstart_...
 source .venv/bin/activate
 export BLOSC2_PACKAGE="$(python -c 'from pathlib import Path; import blosc2; print(Path(blosc2.__file__).resolve().parent)')"
 export HTJ2K_PACKAGE="$(python -c 'from pathlib import Path; import blosc2_htj2k; print(Path(blosc2_htj2k.__file__).resolve().parent)')"
