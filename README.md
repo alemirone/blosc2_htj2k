@@ -183,10 +183,11 @@ print("J2K codec:", blosc2.Codec.J2K)
 print("HTJ2K codec:", blosc2.Codec.HTJ2K)
 PY
 
-# Rebuild hdf5plugin from the JPEG2000 branch so libh5blosc2 uses the experimental
-# libblosc2 above instead of an embedded c-blosc2 copy. This branch also teaches
-# hdf5plugin.Blosc2 the j2k and htj2k codec names.
-git clone --branch add-j2k-htj2k-blosc2-codecs https://github.com/alemirone/hdf5plugin.git
+# Rebuild upstream hdf5plugin so libh5blosc2 uses the experimental
+# libblosc2 above instead of an embedded c-blosc2 copy.  The quickstart writes
+# with low-level Blosc2 filter cd_values, so hdf5plugin does not need to know
+# the j2k and htj2k codec names.
+git clone https://github.com/silx-kit/hdf5plugin.git
 HDF5PLUGIN_SYSTEM_LIBRARIES=blosc2 \
 HDF5PLUGIN_STRIP=blosc,bshuf,bzip2,fcidecomp,lz4,sperr,sz,sz3,zfp,zstd \
   python -m pip install -v --no-build-isolation --no-deps ./hdf5plugin
@@ -748,7 +749,7 @@ export HDF5PLUGIN_SYSTEM_LIBRARIES=blosc2
 export HDF5PLUGIN_STRIP=blosc,bshuf,bzip2,fcidecomp,lz4,sperr,sz,sz3,zfp,zstd
 export PKG_CONFIG_PATH=/path/to/blosc2/lib/pkgconfig:${PKG_CONFIG_PATH:-}
 export LD_LIBRARY_PATH=/path/to/blosc2/lib:${LD_LIBRARY_PATH:-}
-git clone --branch add-j2k-htj2k-blosc2-codecs https://github.com/alemirone/hdf5plugin.git /path/to/hdf5plugin
+git clone https://github.com/silx-kit/hdf5plugin.git /path/to/hdf5plugin
 python -m pip install -v --no-build-isolation --force-reinstall --no-deps /path/to/hdf5plugin
 ```
 
