@@ -25,7 +25,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements-build.txt -r requirements-test.txt
-          python -m pip install cython numpy
+          python -m pip install cython numpy h5py hdf5plugin
 
       - name: Checkout patched python-blosc2
         uses: actions/checkout@v4
@@ -44,5 +44,5 @@ jobs:
         env:
           BLOSC2_EXPECT_GLOBAL_CODEC_IDS: "1"
           BLOSC_TRACE: "1"
-        run: python -m pytest -q "${{ github.workspace }}/tests" -k 'global_registry or manifest or available_backend or diagnose or cli'
+        run: python -m pytest -q "${{ github.workspace }}/tests" -k 'global_registry or manifest or available_backend or hdf5 or diagnose or cli'
         working-directory: /tmp

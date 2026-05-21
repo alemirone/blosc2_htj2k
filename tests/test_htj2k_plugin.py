@@ -458,6 +458,69 @@ print(json.dumps({"skipped": False, "max_abs": max_abs}))
     assert payload["max_abs"] <= 2e-4
 
 
+def test_htj2k_hdf5_roundtrip_with_numeric_filter_if_registry_enabled():
+    if os.environ.get("BLOSC2_EXPECT_GLOBAL_CODEC_IDS") != "1":
+        pytest.skip("HDF5 registry-aware check only runs with patched python-blosc2")
+    code = r"""
+import json
+import tempfile
+
+import blosc2_htj2k
+
+backends = blosc2_htj2k.available_backends()["htj2k"]
+if not backends:
+    print(json.dumps({"skipped": True}))
+    raise SystemExit(0)
+backend = "openhtj2k" if "openhtj2k" in backends else backends[0]
+
+import blosc2
+import h5py
+import hdf5plugin
+import numpy as np
+
+blosc2_htj2k.register_codec()
+blosc2_htj2k.configure(backend=backend)
+hdf5plugin.register("blosc2", force=True)
+
+y, x = np.mgrid[0:32, 0:48]
+base = (22000 + 3000 * np.sin(x / 5.0) + 2000 * np.cos(y / 7.0)).clip(0, 65535).astype(np.uint16)
+data = np.stack([base, (base + 17).astype(np.uint16)], axis=0)
+chunks = (1,) + data.shape[1:]
+compression_opts = (
+    0,
+    0,
+    0,
+    0,
+    5,
+    hdf5plugin.Blosc2.NOFILTER,
+    int(blosc2_htj2k.CODEC_ID),
+)
+with tempfile.TemporaryDirectory() as tmpdir:
+    fn = f"{tmpdir}/htj2k_numeric_filter.h5"
+    with h5py.File(fn, "w") as h5f:
+        h5f.create_dataset(
+            "entry/data",
+            data=data,
+            chunks=chunks,
+            compression=hdf5plugin.BLOSC2_ID,
+            compression_opts=compression_opts,
+        )
+    with h5py.File(fn, "r") as h5f:
+        dset = h5f["entry/data"]
+        info = dset.id.get_chunk_info_by_coord((0, 0, 0))
+        decoded = dset[...]
+    np.testing.assert_array_equal(decoded, data)
+    assert info.filter_mask == 0
+    print(json.dumps({"skipped": False, "backend": backend, "shape": list(decoded.shape), "dtype": str(decoded.dtype)}))
+"""
+    proc = subprocess.run([sys.executable, "-c", code], text=True, capture_output=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    payload = json.loads(_last_json_line(proc.stdout))
+    if payload["skipped"]:
+        pytest.skip("No HTJ2K backend is installed")
+    assert payload["dtype"] == "uint16"
+
+
 def test_htj2k_cli_diagnose():
     proc = subprocess.run(
         [sys.executable, "-m", "blosc2_htj2k", "--diagnose"],
