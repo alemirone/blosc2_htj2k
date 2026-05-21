@@ -225,6 +225,9 @@ endif()
 set(OPENHTJ2K_ROOT "" CACHE PATH "OpenHTJ2K installation root")
 set(OPENHTJ2K_LIBRARY_DIR "" CACHE PATH "OpenHTJ2K library directory")
 option(BLOSC2_HTJ2K_BUILD_OPENHTJ2K "Download and build OpenHTJ2K PR190 when no OpenHTJ2K installation is found" ON)
+if(WIN32)
+    set(BLOSC2_HTJ2K_BUILD_OPENHTJ2K OFF CACHE BOOL "Disable bundled OpenHTJ2K on Windows for now" FORCE)
+endif()
 set(BLOSC2_HTJ2K_OPENHTJ2K_REPOSITORY "https://github.com/osamu620/OpenHTJ2K.git"
     CACHE STRING "OpenHTJ2K repository used by the optional in-tree build")
 set(BLOSC2_HTJ2K_OPENHTJ2K_GIT_TAG "refs/pull/190/head"
