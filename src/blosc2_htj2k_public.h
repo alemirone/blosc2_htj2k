@@ -33,6 +33,9 @@ extern "C" {
 #include "blosc2/codecs-registry.h"
 #include "grok.h"
 
+#ifndef BLOSC_CODEC_HTJ2K
+#define BLOSC_CODEC_HTJ2K 40
+#endif
 #define BLOSC2_HTJ2K_CODEC_ID BLOSC_CODEC_HTJ2K
 #define BLOSC2_HTJ2K_FLOAT_CONFIG_SET     0x01u
 #define BLOSC2_HTJ2K_FLOAT_CLAMP_MIN_SET  0x02u
