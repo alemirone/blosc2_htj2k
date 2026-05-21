@@ -381,6 +381,7 @@ if(OPENHTJ2K_INCLUDE_DIR AND OPENHTJ2K_LIBRARY AND OPENHTJ2K_HAS_PR190_UINT16_AP
     target_include_directories(blosc2_openhtj2k_backend PRIVATE ${OPENHTJ2K_INCLUDE_DIR} ${BLOSC2_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/plugin)
     if(OPENHTJ2K_BUILT_BY_PROJECT)
         target_link_libraries(blosc2_openhtj2k_backend PRIVATE openhtj2k_pr190_imported)
+        add_dependencies(blosc2_openhtj2k_backend openhtj2k_pr190_external)
     else()
         target_link_libraries(blosc2_openhtj2k_backend PRIVATE ${OPENHTJ2K_LIBRARY})
     endif()
