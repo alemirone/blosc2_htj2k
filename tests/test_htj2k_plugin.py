@@ -1,4 +1,8 @@
+import ctypes
+import ctypes.util
 import json
+import os
+from pathlib import Path
 import subprocess
 import sys
 
@@ -6,6 +10,35 @@ import blosc2
 import blosc2_htj2k
 import numpy as np
 import pytest
+
+
+def _load_blosc2_shared_library():
+    root = Path(blosc2.__file__).resolve().parent
+    candidates = []
+    libdir = root / "lib"
+    if sys.platform.startswith("linux"):
+        candidates.extend([libdir / "libblosc2.so", *sorted(libdir.glob("libblosc2.so*"))])
+    elif sys.platform == "darwin":
+        candidates.extend([libdir / "libblosc2.dylib", *sorted(libdir.glob("libblosc2.*.dylib"))])
+    elif os.name == "nt":
+        candidates.extend([root / "blosc2.dll", libdir / "blosc2.dll", libdir / "libblosc2.dll"])
+    for candidate in candidates:
+        if candidate.exists():
+            return ctypes.CDLL(str(candidate))
+    found = ctypes.util.find_library("blosc2")
+    if found:
+        return ctypes.CDLL(found)
+    raise FileNotFoundError("Could not locate libblosc2 for registry checks")
+
+
+def test_htj2k_global_registry_id_with_patched_python_blosc2():
+    if os.environ.get("BLOSC2_EXPECT_GLOBAL_CODEC_IDS") != "1":
+        pytest.skip("global codec-id check only runs with patched python-blosc2")
+    lib = _load_blosc2_shared_library()
+    lib.blosc2_compname_to_compcode.argtypes = [ctypes.c_char_p]
+    lib.blosc2_compname_to_compcode.restype = ctypes.c_int
+    compcode = lib.blosc2_compname_to_compcode(b"htj2k")
+    assert compcode == blosc2_htj2k.CODEC_ID == 40
 
 
 def _last_json_line(text):

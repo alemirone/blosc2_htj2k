@@ -36,9 +36,15 @@ if __name__ == '__main__':
     dset = f['/data']
     print(f"Compressing dataset of {dset.shape} images ...")
 
-    # Compression params for identifying the codec. In the future, one should be able to
-    # specify the rok plugin (and its parameters) here.
-    b2params = hdf5plugin.Blosc2()
+    compression_opts = (
+        0,                             # reserved
+        0,                             # reserved
+        0,                             # reserved
+        0,                             # reserved
+        5,                             # clevel
+        hdf5plugin.Blosc2.NOFILTER,    # Blosc2 prefilter
+        int(blosc2_htj2k.CODEC_ID),    # HTJ2K codec id
+    )
 
     for cratio in range(1, 11):
         print(f"Compressing with cratio={cratio}x ...")
@@ -54,7 +60,14 @@ if __name__ == '__main__':
         # Open the output file
         fout = h5py.File(f'/Users/faltet/Downloads/lung_jpeg2k_2000-2100-{cratio}x.h5', 'w')
         chunks = (1,) + dset.shape[1:]
-        dset_out = fout.create_dataset('/data', shape=dset.shape, dtype=dset.dtype, chunks=chunks, **b2params)
+        dset_out = fout.create_dataset(
+            '/data',
+            shape=dset.shape,
+            dtype=dset.dtype,
+            chunks=chunks,
+            compression=hdf5plugin.BLOSC2_ID,
+            compression_opts=compression_opts,
+        )
 
         for i in tqdm(range(dset.shape[0])):
             im = dset[i:i+1, ...]
