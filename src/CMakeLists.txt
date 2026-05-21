@@ -324,6 +324,10 @@ if(BLOSC2_HTJ2K_BUILD_OPENHTJ2K AND (NOT OPENHTJ2K_INCLUDE_DIR OR NOT OPENHTJ2K_
     set(OPENHTJ2K_LIBRARY
         "${OPENHTJ2K_LIBRARY_DIR}/${CMAKE_SHARED_LIBRARY_PREFIX}open_htj2k_R${CMAKE_SHARED_LIBRARY_SUFFIX}")
     set(OPENHTJ2K_BUILT_BY_PROJECT ON)
+    add_library(openhtj2k_pr190_imported SHARED IMPORTED GLOBAL)
+    set_target_properties(openhtj2k_pr190_imported PROPERTIES
+        IMPORTED_LOCATION "${OPENHTJ2K_LIBRARY}")
+    add_dependencies(openhtj2k_pr190_imported openhtj2k_pr190_external)
     if(NOT BLOSC2_HTJ2K_OPENHTJ2K_SOURCE_DIR)
         message(STATUS "OpenHTJ2K will be downloaded and built from ${BLOSC2_HTJ2K_OPENHTJ2K_REPOSITORY} (${BLOSC2_HTJ2K_OPENHTJ2K_GIT_TAG})")
     endif()
@@ -368,9 +372,10 @@ endif()
 if(OPENHTJ2K_INCLUDE_DIR AND OPENHTJ2K_LIBRARY AND OPENHTJ2K_HAS_PR190_UINT16_API)
     add_library(blosc2_openhtj2k_backend SHARED b2nd_layout.cpp plugin/openhtj2k_backend.cpp plugin/htj2k_openhtj2k_plugin.cpp)
     target_include_directories(blosc2_openhtj2k_backend PRIVATE ${OPENHTJ2K_INCLUDE_DIR} ${BLOSC2_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/plugin)
-    target_link_libraries(blosc2_openhtj2k_backend PRIVATE ${OPENHTJ2K_LIBRARY})
     if(OPENHTJ2K_BUILT_BY_PROJECT)
-        add_dependencies(blosc2_openhtj2k_backend openhtj2k_pr190_external)
+        target_link_libraries(blosc2_openhtj2k_backend PRIVATE openhtj2k_pr190_imported)
+    else()
+        target_link_libraries(blosc2_openhtj2k_backend PRIVATE ${OPENHTJ2K_LIBRARY})
     endif()
 
     if(UNIX AND NOT APPLE)
