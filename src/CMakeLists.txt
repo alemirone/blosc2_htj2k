@@ -106,7 +106,9 @@ install(FILES "${CMAKE_SOURCE_DIR}/blosc2_htj2k/blosc2_htj2k_plugins.json"
 
 add_library(blosc2_jpeg2000_bootstrap SHARED jpeg2000_bootstrap.c)
 target_include_directories(blosc2_jpeg2000_bootstrap PRIVATE ${BLOSC2_INCLUDE_DIR})
-target_link_libraries(blosc2_jpeg2000_bootstrap PRIVATE ${BLOSC2_LIBRARIES})
+if(APPLE OR WIN32)
+    target_link_libraries(blosc2_jpeg2000_bootstrap PRIVATE ${BLOSC2_LIBRARIES})
+endif()
 if(UNIX AND NOT APPLE)
     target_link_libraries(blosc2_jpeg2000_bootstrap PRIVATE dl)
     set_target_properties(blosc2_jpeg2000_bootstrap PROPERTIES
