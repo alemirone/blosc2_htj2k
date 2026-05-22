@@ -464,6 +464,46 @@ print(json.dumps({"skipped": False, "max_abs": max_abs}))
     assert payload["max_abs"] <= 2e-4
 
 
+def test_htj2k_float32_uint32_lossy_with_kakadu_if_available():
+    code = r"""
+import json
+
+import blosc2_htj2k
+
+if "kakadu" not in blosc2_htj2k.available_backends()["htj2k"]:
+    print(json.dumps({"skipped": True}))
+    raise SystemExit(0)
+
+import blosc2
+import numpy as np
+
+blosc2_htj2k.register_codec()
+blosc2_htj2k.configure(backend="kakadu", float_mode="uint32")
+
+y, x = np.mgrid[0:96, 0:128]
+data = (0.25 * np.sin(x / 7) + 0.75 * np.cos(y / 11) + x * 0.001).astype(np.float32)
+cparams = {
+    "codec": blosc2_htj2k.CODEC_ID,
+    "codec_meta": 80,
+    "filters": [],
+    "splitmode": blosc2.SplitMode.NEVER_SPLIT,
+}
+decoded = blosc2.asarray(data, chunks=data.shape, blocks=data.shape, cparams=cparams)[...]
+err = np.abs(decoded - data)
+max_abs = float(np.max(err))
+mean_abs = float(np.mean(err))
+assert decoded.dtype == np.float32
+assert max_abs <= 1e-3
+print(json.dumps({"skipped": False, "max_abs": max_abs, "mean_abs": mean_abs}))
+"""
+    proc = subprocess.run([sys.executable, "-c", code], text=True, capture_output=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    payload = json.loads(_last_json_line(proc.stdout))
+    if payload["skipped"]:
+        pytest.skip("Kakadu HTJ2K backend is not installed")
+    assert payload["max_abs"] <= 1e-3
+
+
 def test_htj2k_hdf5_roundtrip_with_numeric_filter_if_registry_enabled():
     if os.environ.get("BLOSC2_EXPECT_GLOBAL_CODEC_IDS") != "1":
         pytest.skip("HDF5 registry-aware check only runs with patched python-blosc2")

@@ -535,6 +535,15 @@ int kakadu_encode(
     if (!set_siz_params(siz, dim_x, dim_y, num_comps, precision)) {
         return -1;
     }
+    const bool signed_32bit_rate_control = (typesize == 4 && meta != 0);
+    if (signed_32bit_rate_control) {
+        for (int c = 0; c < num_comps; ++c) {
+            siz.set(Ssigned, c, 0, true);
+        }
+        if (debug) {
+            fprintf(stderr, "[blosc2_htj2k] Kakadu uint32 rate-control path: using signed 32-bit samples\n");
+        }
+    }
 
     MemTarget target;
     kdu_codestream codestream;
@@ -634,21 +643,36 @@ int kakadu_encode(
                                                 precisions.data(), is_signed.get());
         } else if (typesize == 4) {
             auto *input32 = reinterpret_cast<const kdu_uint32*>(input);
-            // Kakadu's 32-bit stripe API uses signed buffers centered around
-            // zero for unsigned 32-bit samples:
-            // signed_value = unsigned_value - 2^31.
-            std::vector<kdu_int32> stripe_buf(static_cast<size_t>(dim_x) * dim_y * num_comps);
-            constexpr int64_t kBias32 = int64_t{1} << 31;
-            for (size_t i = 0; i < stripe_buf.size(); ++i) {
-                stripe_buf[i] = static_cast<kdu_int32>(static_cast<int64_t>(input32[i]) - kBias32);
-            }
             std::unique_ptr<bool[]> is_signed(new bool[num_comps]);
             for (int c = 0; c < num_comps; ++c) {
-                is_signed[c] = false;
+                is_signed[c] = signed_32bit_rate_control;
             }
-            needs_more = compressor.push_stripe(stripe_buf.data(), stripe_heights.data(),
-                                                nullptr, nullptr, nullptr,
-                                                precisions.data(), is_signed.get());
+            if (signed_32bit_rate_control) {
+                // Feed full-range 32-bit float quantization through Kakadu's
+                // floating stripe API.  P=0 gives a signed nominal range
+                // [-0.5,+0.5], matching (uint32 - 2^31) / 2^32 without the
+                // integer-path overflow/sign ambiguities seen under rate
+                // control.
+                std::vector<float> stripe_buf(static_cast<size_t>(dim_x) * dim_y * num_comps);
+                constexpr double kBias32 = 2147483648.0;
+                constexpr double kScale32 = 4294967296.0;
+                for (size_t i = 0; i < stripe_buf.size(); ++i) {
+                    stripe_buf[i] = static_cast<float>(
+                        (static_cast<double>(input32[i]) - kBias32) / kScale32);
+                }
+                std::vector<int> float_precisions(num_comps, 0);
+                needs_more = compressor.push_stripe(stripe_buf.data(), stripe_heights.data(),
+                                                    nullptr, nullptr, nullptr,
+                                                    float_precisions.data(), is_signed.get());
+            } else {
+                // Kakadu's 32-bit push_stripe overload is typed as
+                // kdu_int32*, but with is_signed=false the samples are
+                // interpreted as unsigned 32-bit values.
+                auto *stripe_input = reinterpret_cast<kdu_int32*>(const_cast<kdu_uint32*>(input32));
+                needs_more = compressor.push_stripe(stripe_input, stripe_heights.data(),
+                                                    nullptr, nullptr, nullptr,
+                                                    precisions.data(), is_signed.get());
+            }
         }
         if (debug) {
             fprintf(stderr, "[blosc2_htj2k] Kakadu push_stripe needs_more=%d\n", needs_more ? 1 : 0);
@@ -753,8 +777,10 @@ int kakadu_decode(
         }
 
         int precision = codestream.get_bit_depth(0, true);
+        bool codestream_signed = codestream.get_signed(0, true);
         if (debug) {
-            fprintf(stderr, "[blosc2_htj2k] Kakadu decoder: codestream precision=%d bits\n", precision);
+            fprintf(stderr, "[blosc2_htj2k] Kakadu decoder: codestream precision=%d bits signed=%d\n",
+                    precision, codestream_signed ? 1 : 0);
         }
         // The transparent codec path maps Blosc chunks back to uint8/uint16/uint32.
         if (!(precision == 8 || precision == 16 || precision == 32)) {
@@ -810,18 +836,23 @@ int kakadu_decode(
         if (typesize == 2 || typesize == 4) {
             is_signed.reset(new bool[num_comps]);
             for (int c = 0; c < num_comps; ++c) {
-                is_signed[c] = false;
+                is_signed[c] = (typesize == 4) ? codestream_signed : false;
             }
         }
         std::vector<uint8_t> decoded8;
         std::vector<kdu_uint16> decoded16;
         std::vector<kdu_int32> decoded32;
+        std::vector<float> decoded_float32;
         if (typesize == 1) {
             decoded8.resize(static_cast<size_t>(expected));
         } else if (typesize == 2) {
             decoded16.resize(static_cast<size_t>(expected / typesize));
         } else if (typesize == 4) {
-            decoded32.resize(static_cast<size_t>(expected / typesize));
+            if (codestream_signed) {
+                decoded_float32.resize(static_cast<size_t>(expected / typesize));
+            } else {
+                decoded32.resize(static_cast<size_t>(expected / typesize));
+            }
         }
 
         int rows_done = 0;
@@ -851,17 +882,27 @@ int kakadu_decode(
                                                        precisions.data(),
                                                        (const bool*)is_signed.get());
             } else if (typesize == 4) {
-                // Kakadu's 32-bit pull_stripe overload is typed as
-                // kdu_int32*, but with is_signed=false the buffer is
-                // explicitly used as unsigned 32-bit storage.  The
-                // single-buffer overload matches the contiguous
-                // sample-interleaved Blosc2 chunk layout.
-                kdu_int32 *stripe_output = decoded32.data() +
-                    static_cast<int64_t>(rows_done) * width * num_comps;
-                needs_more = decompressor.pull_stripe(stripe_output, stripe_heights.data(),
-                                                       nullptr, nullptr, nullptr,
-                                                       precisions.data(),
-                                                       (const bool*)is_signed.get());
+                if (codestream_signed) {
+                    float *stripe_output = decoded_float32.data() +
+                        static_cast<int64_t>(rows_done) * width * num_comps;
+                    std::vector<int> float_precisions(num_comps, 0);
+                    needs_more = decompressor.pull_stripe(stripe_output, stripe_heights.data(),
+                                                           nullptr, nullptr, nullptr,
+                                                           float_precisions.data(),
+                                                           (const bool*)is_signed.get());
+                } else {
+                    // Kakadu's 32-bit pull_stripe overload is typed as
+                    // kdu_int32*, but with is_signed=false the buffer is
+                    // explicitly used as unsigned 32-bit storage.  The
+                    // single-buffer overload matches the contiguous
+                    // sample-interleaved Blosc2 chunk layout.
+                    kdu_int32 *stripe_output = decoded32.data() +
+                        static_cast<int64_t>(rows_done) * width * num_comps;
+                    needs_more = decompressor.pull_stripe(stripe_output, stripe_heights.data(),
+                                                           nullptr, nullptr, nullptr,
+                                                           precisions.data(),
+                                                           (const bool*)is_signed.get());
+                }
             }
             rows_done += rows;
             if (debug) {
@@ -894,14 +935,26 @@ int kakadu_decode(
         } else if (typesize == 2) {
             std::memcpy(output, decoded16.data(), static_cast<size_t>(expected));
         } else if (typesize == 4) {
-            // Kakadu returns unsigned 32-bit stripes through a signed buffer
-            // centered around zero: signed_value = unsigned_value - 2^31.
-            // Re-bias to the uint32 range expected by the float dequantizer.
-            auto *out32 = reinterpret_cast<kdu_uint32*>(output);
-            constexpr int64_t kBias32 = int64_t{1} << 31;
-            const size_t nvalues = static_cast<size_t>(expected / typesize);
-            for (size_t i = 0; i < nvalues; ++i) {
-                out32[i] = static_cast<kdu_uint32>(static_cast<int64_t>(decoded32[i]) + kBias32);
+            if (codestream_signed) {
+                auto *out32 = reinterpret_cast<kdu_uint32*>(output);
+                constexpr double kBias32 = 2147483648.0;
+                constexpr double kScale32 = 4294967296.0;
+                const size_t nvalues = static_cast<size_t>(expected / typesize);
+                for (size_t i = 0; i < nvalues; ++i) {
+                    double q = static_cast<double>(decoded_float32[i]) * kScale32 + kBias32;
+                    if (q <= 0.0) {
+                        out32[i] = 0;
+                    } else if (q >= 4294967295.0) {
+                        out32[i] = 0xffffffffu;
+                    } else {
+                        out32[i] = static_cast<kdu_uint32>(std::llround(q));
+                    }
+                }
+            } else {
+                // With is_signed=false Kakadu stores unsigned 32-bit samples
+                // in the kdu_int32-typed buffer without requiring an
+                // application level bias.
+                std::memcpy(output, decoded32.data(), static_cast<size_t>(expected));
             }
         }
         codestream.destroy();
