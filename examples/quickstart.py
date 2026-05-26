@@ -89,15 +89,9 @@ def write_hdf5_stack_pair(data, output_dir, codec_id):
     raw_file = output_dir / "htj2k_stack_raw.h5"
     compressed_file = output_dir / "htj2k_stack_blosc2_htj2k.h5"
     chunks = (1,) + tuple(data.shape[1:])
-    compression_opts = (
-        0,                              # reserved
-        0,                              # reserved
-        0,                              # reserved
-        0,                              # reserved
-        5,                              # clevel
-        hdf5plugin.Blosc2.NOFILTER,     # Blosc2 prefilter
-        codec_id,                       # htj2k codec id
-    )
+    if codec_id != blosc2_htj2k.CODEC_ID:
+        raise ValueError(f"unexpected HTJ2K codec id: {codec_id}")
+    compression_opts = blosc2_htj2k.hdf5_compression_opts(clevel=5)
 
     with h5py.File(raw_file, "w") as h5f:
         h5f.create_dataset(dataset_name, data=data)

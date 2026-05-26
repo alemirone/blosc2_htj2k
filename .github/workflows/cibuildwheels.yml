@@ -34,7 +34,8 @@ jobs:
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.22.0
         env:
-          CIBW_BEFORE_BUILD: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements-build.txt
+          CIBW_BUILD_FRONTEND: "pip; args: --no-build-isolation"
+          CIBW_BEFORE_BUILD: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements-build.txt && python3 -m pip install --no-build-isolation git+https://github.com/alemirone/python-blosc2.git@add_j2k_htj2k_custom_codecs
           CIBW_ENVIRONMENT: CMAKE_BUILD_PARALLEL_LEVEL=10 CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
           CIBW_BUILD: 'cp313-*'
           CIBW_BEFORE_TEST: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements-test.txt
@@ -75,6 +76,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements-test.txt
+          python -m pip install --no-build-isolation git+https://github.com/alemirone/python-blosc2.git@add_j2k_htj2k_custom_codecs
 
       - name: Install wheel
         run: python -m pip install --no-deps wheelhouse/*.whl
@@ -103,7 +105,8 @@ jobs:
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.22.0
         env:
-          CIBW_BEFORE_BUILD: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements-build.txt
+          CIBW_BUILD_FRONTEND: "pip; args: --no-build-isolation"
+          CIBW_BEFORE_BUILD: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements-build.txt && python3 -m pip install --no-build-isolation git+https://github.com/alemirone/python-blosc2.git@add_j2k_htj2k_custom_codecs
           CIBW_ENVIRONMENT: CMAKE_BUILD_PARALLEL_LEVEL=10 CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5" DONT_BUILD_EXAMPLES=1
           CIBW_BUILD: 'cp313-*'
           CIBW_BEFORE_TEST: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements-test.txt
@@ -136,7 +139,8 @@ jobs:
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.22.0
         env:
-          CIBW_BEFORE_BUILD: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements-build.txt
+          CIBW_BUILD_FRONTEND: "pip; args: --no-build-isolation"
+          CIBW_BEFORE_BUILD: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements-build.txt && python3 -m pip install --no-build-isolation git+https://github.com/alemirone/python-blosc2.git@add_j2k_htj2k_custom_codecs
           CIBW_ENVIRONMENT: CMAKE_BUILD_PARALLEL_LEVEL=10 CMAKE_OSX_ARCHITECTURES=arm64 CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
           CIBW_BUILD: 'cp313-*'
           CIBW_REPAIR_WHEEL_COMMAND_MACOS: "" # don't repair on macOS (too difficult to handle finding libblosc2)
@@ -175,7 +179,8 @@ jobs:
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.22.0
         env:
-          CIBW_BEFORE_ALL: python -m pip install -r requirements-build.txt
+          CIBW_BUILD_FRONTEND: "pip; args: --no-build-isolation"
+          CIBW_BEFORE_ALL: python -m pip install -r requirements-build.txt && python -m pip install --no-build-isolation git+https://github.com/alemirone/python-blosc2.git@add_j2k_htj2k_custom_codecs
           CIBW_ENVIRONMENT: CMAKE_BUILD_PARALLEL_LEVEL=10 CMAKE_ARGS="-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
           CIBW_BUILD: 'cp312-win_amd64'
           # Windows tests are currently disabled (wheel is built but not tested) as some fail for unkown reason.

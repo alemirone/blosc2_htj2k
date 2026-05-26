@@ -36,15 +36,7 @@ if __name__ == '__main__':
     dset = f['/data']
     print(f"Compressing dataset of {dset.shape} images ...")
 
-    compression_opts = (
-        0,                             # reserved
-        0,                             # reserved
-        0,                             # reserved
-        0,                             # reserved
-        5,                             # clevel
-        hdf5plugin.Blosc2.NOFILTER,    # Blosc2 prefilter
-        int(blosc2_htj2k.CODEC_ID),    # HTJ2K codec id
-    )
+    compression_opts = blosc2_htj2k.hdf5_compression_opts(clevel=5)
 
     for cratio in range(1, 11):
         print(f"Compressing with cratio={cratio}x ...")

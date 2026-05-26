@@ -23,6 +23,24 @@ __version__ = "0.3.6.dev0"
 
 CODEC_NAME = "htj2k"
 CODEC_ID = 40
+HDF5_BLOSC2_FILTER_ID = 32026
+HDF5_BLOSC2_NOFILTER = 0
+
+
+def hdf5_compression_opts(clevel=5, prefilter=HDF5_BLOSC2_NOFILTER):
+    """Return low-level HDF5 Blosc2 filter options for the HTJ2K codec id.
+
+    This avoids requiring hdf5plugin changes for experimental external Blosc2
+    codecs: pass the returned tuple as HDF5 Blosc2 ``cd_values``/
+    ``compression_opts``. ``codec_meta`` is not represented here; set it in a
+    Blosc2 cframe before writing direct chunks when rate/quality metadata is
+    required.
+    """
+    clevel = int(clevel)
+    prefilter = int(prefilter)
+    if not 0 <= clevel <= 9:
+        raise ValueError("clevel must be in the range [0, 9]")
+    return (0, 0, 0, 0, clevel, prefilter, CODEC_ID)
 
 # On Windows, pre-load blosc2.dll before loading blosc2_htj2k.dll
 if platform.system() == "Windows":

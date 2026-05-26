@@ -43,8 +43,8 @@ execute_process(
 # To compile blosc2_htj2k, we need the include files and the actual lib.
 # Prefer the PEP 427-compliant python-blosc2 wheel layout when available, but
 # also support python-blosc2 builds linked against a separately installed
-# c-blosc2.  The latter is the current quick-start path while the J2K/HTJ2K
-# codec IDs live on an experimental c-blosc2 branch.
+# c-blosc2.  The bundled python-blosc2 path is preferred while released wheels
+# lag the official c-blosc2 registry entries for J2K/HTJ2K.
 set(BLOSC2_INCLUDE_DIR "")
 set(BLOSC2_LIBRARIES "")
 set(BLOSC2_LIBRARY_DIR_RESOLVED "")

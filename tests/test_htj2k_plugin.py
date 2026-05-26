@@ -532,15 +532,7 @@ y, x = np.mgrid[0:32, 0:48]
 base = (22000 + 3000 * np.sin(x / 5.0) + 2000 * np.cos(y / 7.0)).clip(0, 65535).astype(np.uint16)
 data = np.stack([base, (base + 17).astype(np.uint16)], axis=0)
 chunks = (1,) + data.shape[1:]
-compression_opts = (
-    0,
-    0,
-    0,
-    0,
-    5,
-    hdf5plugin.Blosc2.NOFILTER,
-    int(blosc2_htj2k.CODEC_ID),
-)
+compression_opts = blosc2_htj2k.hdf5_compression_opts(clevel=5)
 with tempfile.TemporaryDirectory() as tmpdir:
     fn = f"{tmpdir}/htj2k_numeric_filter.h5"
     with h5py.File(fn, "w") as h5f:
