@@ -1,3 +1,5 @@
 Pillow
 blosc2>=4.0.0b1
+h5py
+hdf5plugin
 pytest
