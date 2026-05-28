@@ -154,7 +154,29 @@ python -m pip install -v --no-build-isolation ./python-blosc2
 
 export BLOSC2_PACKAGE="$(python -c 'from pathlib import Path; import blosc2; print(Path(blosc2.__file__).resolve().parent)')"
 export LD_LIBRARY_PATH="${BLOSC2_PACKAGE}/lib:${LD_LIBRARY_PATH:-}"
-export PKG_CONFIG_PATH="${BLOSC2_PACKAGE}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+
+# The pkg-config file inside the python-blosc2 wheel can contain build-time
+# paths.  Write a local one so hdf5plugin links to this environment's c-blosc2.
+mkdir -p "$PWD/pkgconfig"
+python - <<'PY'
+import os
+from pathlib import Path
+
+prefix = Path(os.environ["BLOSC2_PACKAGE"])
+pc = Path.cwd() / "pkgconfig" / "blosc2.pc"
+pc.write_text(f"""prefix={prefix}
+exec_prefix=${{prefix}}
+libdir=${{prefix}}/lib
+includedir=${{prefix}}/include
+
+Name: blosc2
+Description: High performance meta-compressor optimized for binary data
+Version: 3.1.3.dev
+Libs: -L${{libdir}} -lblosc2
+Cflags: -I${{includedir}}
+""")
+PY
+export PKG_CONFIG_PATH="$PWD/pkgconfig:${PKG_CONFIG_PATH:-}"
 
 python - <<'PY'
 import blosc2
@@ -168,7 +190,7 @@ PY
 git clone https://github.com/silx-kit/hdf5plugin.git
 HDF5PLUGIN_SYSTEM_LIBRARIES=blosc2 \
 HDF5PLUGIN_STRIP=blosc,bshuf,bzip2,fcidecomp,lz4,sperr,sz,sz3,zfp,zstd \
-python -m pip install -v --no-build-isolation ./hdf5plugin
+python -m pip install -v --no-build-isolation --no-cache-dir ./hdf5plugin
 
 python - <<'PY'
 import ctypes
