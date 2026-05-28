@@ -181,7 +181,7 @@ jobs:
         uses: pypa/cibuildwheel@v2.22.0
         env:
           CIBW_BUILD_FRONTEND: "pip; args: --no-build-isolation"
-          CIBW_BEFORE_ALL: python -m pip install -r requirements-build.txt && set "CMAKE_ARGS=-T ClangCL -DCMAKE_POLICY_VERSION_MINIMUM=3.5" && python -m pip install --no-build-isolation git+https://github.com/alemirone/python-blosc2.git@add_j2k_htj2k_custom_codecs
+          CIBW_BEFORE_BUILD: python -m pip install -r requirements-build.txt && set "CMAKE_ARGS=-T ClangCL -DCMAKE_POLICY_VERSION_MINIMUM=3.5" && python -m pip install --no-build-isolation git+https://github.com/alemirone/python-blosc2.git@add_j2k_htj2k_custom_codecs
           CIBW_ENVIRONMENT: CMAKE_BUILD_PARALLEL_LEVEL=10 CMAKE_ARGS="-T ClangCL -DCMAKE_POLICY_VERSION_MINIMUM=3.5"
           CIBW_BUILD: 'cp312-win_amd64'
           # Windows tests are currently disabled (wheel is built but not tested) as some fail for unkown reason.
