@@ -172,7 +172,7 @@ includedir=${{prefix}}/include
 Name: blosc2
 Description: High performance meta-compressor optimized for binary data
 Version: 3.1.3.dev
-Libs: -L${{libdir}} -lblosc2
+Libs: -L${{libdir}} -l:libblosc2.so.8
 Cflags: -I${{includedir}}
 """)
 PY
@@ -188,9 +188,10 @@ PY
 # Build hdf5plugin from source, but only its Blosc2 HDF5 filter, and link it to
 # the c-blosc2 runtime installed by python-blosc2 above.
 git clone https://github.com/silx-kit/hdf5plugin.git
+rm -rf hdf5plugin/build hdf5plugin/src/hdf5plugin.egg-info
 HDF5PLUGIN_SYSTEM_LIBRARIES=blosc2 \
 HDF5PLUGIN_STRIP=blosc,bshuf,bzip2,fcidecomp,lz4,sperr,sz,sz3,zfp,zstd \
-python -m pip install -v --no-build-isolation --no-cache-dir ./hdf5plugin
+python -m pip install -v --no-build-isolation --force-reinstall --no-deps --no-cache-dir ./hdf5plugin
 
 python - <<'PY'
 import ctypes
