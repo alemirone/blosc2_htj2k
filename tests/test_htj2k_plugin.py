@@ -43,10 +43,10 @@ def test_htj2k_global_registry_id_with_patched_python_blosc2():
         pytest.skip("global codec-id check only runs with patched python-blosc2")
     lib = _load_blosc2_shared_library()
     lib.blosc2_init.argtypes = []
-    lib.blosc2_init.restype = ctypes.c_int
+    lib.blosc2_init.restype = None
     lib.blosc2_compname_to_compcode.argtypes = [ctypes.c_char_p]
     lib.blosc2_compname_to_compcode.restype = ctypes.c_int
-    assert lib.blosc2_init() == 0
+    lib.blosc2_init()
     compcode = lib.blosc2_compname_to_compcode(b"htj2k")
     assert compcode == blosc2_htj2k.CODEC_ID == 40
 
