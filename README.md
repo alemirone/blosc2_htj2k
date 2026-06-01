@@ -95,9 +95,10 @@ remains the preferred redistributable backend for normal HTJ2K testing.
 
 ## Hands-On Quick Start
 
-For now this plugin depends on a `python-blosc2` branch that exposes the
-J2K/HTJ2K codec IDs.  That branch bundles the official `Blosc/c-blosc2` main
-runtime, where these codec IDs are already registered.
+For now this plugin depends on a `python-blosc2` build that exposes the
+J2K/HTJ2K codec IDs and ships c-blosc2 headers with
+`b2nd_deserialize_meta_inline()` (`c-blosc2 >= 3.1.0`).  The plugin uses that
+header-only helper instead of linking to the non-inline B2ND symbol.
 
 This quickstart builds `hdf5plugin` from source and links its Blosc2 HDF5
 filter against the same current c-blosc2 runtime installed by `python-blosc2`.

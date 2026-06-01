@@ -65,13 +65,6 @@ endif()
 # loader and by the replacement backends built below.
 target_include_directories(blosc2_htj2k PUBLIC ${BLOSC2_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/plugin)
 target_link_libraries(blosc2_htj2k PRIVATE grokj2k)
-if(APPLE OR WIN32)
-    # Keep the original Linux wheel behavior: libblosc2 is provided by the
-    # host process/package and is not a direct dependency of this shared
-    # library.  Linking it on Linux makes auditwheel try to vendor
-    # libblosc2.so.8 from the python-blosc2 wheel and breaks wheel repair.
-    target_link_libraries(blosc2_htj2k PRIVATE ${BLOSC2_LIBRARIES})
-endif()
 if (UNIX AND NOT APPLE)
     target_link_libraries(blosc2_htj2k PRIVATE dl)
 endif()

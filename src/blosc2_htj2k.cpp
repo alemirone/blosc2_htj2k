@@ -10,6 +10,9 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#include <windows.h>
+#else
+#include <dlfcn.h>
 #endif
 
 #include <cstdio>
@@ -117,6 +120,56 @@ void ensure_grok_initialized(uint32_t nthreads = 0, bool verbose = false) {
 grk_cparameters *current_compress_params(blosc2_cparams *cparams) {
     auto *codec_params = cparams ? (blosc2_htj2k_params *)cparams->codec_params : nullptr;
     return codec_params ? &codec_params->compressParams : &GRK_CPARAMETERS_DEFAULTS;
+}
+
+template <typename Fn>
+Fn resolve_blosc2_symbol(const char *name) {
+#ifdef _WIN32
+    const char *module_names[] = {
+        nullptr,
+        "blosc2.dll",
+        "libblosc2.dll",
+        "libblosc2-8.dll",
+    };
+    for (const char *module_name : module_names) {
+        HMODULE module = module_name == nullptr ? GetModuleHandleA(nullptr) : GetModuleHandleA(module_name);
+        if (module != nullptr) {
+            FARPROC symbol = GetProcAddress(module, name);
+            if (symbol != nullptr) {
+                return reinterpret_cast<Fn>(symbol);
+            }
+        }
+    }
+    return nullptr;
+#else
+    return reinterpret_cast<Fn>(dlsym(RTLD_DEFAULT, name));
+#endif
+}
+
+int verify_blosc2_codec_registration(const char *codec_name, int codec_id) {
+    using blosc2_init_fn = void (*)();
+    using blosc2_compname_to_compcode_fn = int (*)(const char *);
+
+    auto init = resolve_blosc2_symbol<blosc2_init_fn>("blosc2_init");
+    auto compname_to_compcode = resolve_blosc2_symbol<blosc2_compname_to_compcode_fn>(
+        "blosc2_compname_to_compcode");
+    if (init == nullptr || compname_to_compcode == nullptr) {
+        set_runtime_error("active c-blosc2 symbols are not visible; cannot verify codec registration");
+        return -1;
+    }
+
+    init();
+    int existing = compname_to_compcode(codec_name);
+    if (existing == codec_id) {
+        return 0;
+    }
+    if (existing >= 0) {
+        set_runtime_error("Blosc2 codec name is already registered with another id");
+        return -1;
+    }
+
+    set_runtime_error("active c-blosc2 registry does not contain the official codec id");
+    return -1;
 }
 
 // Decide whether the current encode asks for regular J2K or HTJ2K.
@@ -312,19 +365,7 @@ int blosc2_htj2k_configure(const blosc2_htj2k_runtime_config *config) {
 }
 
 int blosc2_htj2k_register_codec(void) {
-    blosc2_init();
-
-    int existing = blosc2_compname_to_compcode("htj2k");
-    if (existing == BLOSC2_HTJ2K_CODEC_ID) {
-        return 0;
-    }
-    if (existing >= 0) {
-        set_runtime_error("Blosc2 codec name 'htj2k' is already registered with another id");
-        return -1;
-    }
-
-    set_runtime_error("active c-blosc2 registry does not contain the official 'htj2k' codec id");
-    return -1;
+    return verify_blosc2_codec_registration("htj2k", BLOSC2_HTJ2K_CODEC_ID);
 }
 
 int blosc2_htj2k_list_plugins(char *buffer, size_t buffer_len) {

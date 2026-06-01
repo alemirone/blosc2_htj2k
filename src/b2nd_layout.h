@@ -1,7 +1,7 @@
 /*********************************************************************
- * blosc2_htj2k: local B2ND metalayer reader.
+ * blosc2_htj2k: inline B2ND metalayer reader.
  *
- * Keep the codec independent from non-inline B2ND symbols at runtime.  HDF5
+ * Keep the codec independent from non-inline B2ND symbols at runtime. HDF5
  * can load blosc2_htj2k as a native codec before Python imports this package;
  * in that path the host process may not expose b2nd_deserialize_meta() with
  * global visibility.

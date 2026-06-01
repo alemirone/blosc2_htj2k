@@ -113,6 +113,30 @@ if(NOT BLOSC2_INCLUDE_DIR OR NOT BLOSC2_LIBRARIES)
     message(FATAL_ERROR "Could not find Blosc2 headers/libraries. Install python-blosc2 with bundled libraries, or install c-blosc2 and set CMAKE_PREFIX_PATH/PKG_CONFIG_PATH.")
 endif()
 
+include(CheckCXXSourceCompiles)
+set(CMAKE_REQUIRED_INCLUDES "${BLOSC2_INCLUDE_DIR}")
+set(_BLOSC2_PREVIOUS_TRY_COMPILE_TARGET_TYPE "${CMAKE_TRY_COMPILE_TARGET_TYPE}")
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+check_cxx_source_compiles("
+#include <stdint.h>
+#include \"blosc2.h\"
+#include \"b2nd.h\"
+int main(void) {
+  uint8_t meta[1] = {0};
+  int8_t ndim = 0;
+  int64_t shape[B2ND_MAX_DIM] = {0};
+  int32_t chunkshape[B2ND_MAX_DIM] = {0};
+  int32_t blockshape[B2ND_MAX_DIM] = {0};
+  return b2nd_deserialize_meta_inline(meta, 1, &ndim, shape, chunkshape, blockshape, 0, 0);
+}
+" BLOSC2_HAS_B2ND_DESERIALIZE_META_INLINE)
+set(CMAKE_TRY_COMPILE_TARGET_TYPE "${_BLOSC2_PREVIOUS_TRY_COMPILE_TARGET_TYPE}")
+unset(_BLOSC2_PREVIOUS_TRY_COMPILE_TARGET_TYPE)
+unset(CMAKE_REQUIRED_INCLUDES)
+if(NOT BLOSC2_HAS_B2ND_DESERIALIZE_META_INLINE)
+    message(FATAL_ERROR "The Blosc2 headers found at ${BLOSC2_INCLUDE_DIR} do not provide b2nd_deserialize_meta_inline(). Please use c-blosc2 >= 3.1.0 / a python-blosc2 build that bundles it.")
+endif()
+
 # ============================================================
 # blosc2_htj2k plugin source files
 # ============================================================
