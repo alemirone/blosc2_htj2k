@@ -125,7 +125,7 @@ if platform.system() == "Windows":
                 break
     except (ImportError, OSError):
         pass
-elif platform.system() == "Linux":
+elif platform.system() in {"Linux", "Darwin"}:
     try:
         import importlib.util
         spec = importlib.util.find_spec("blosc2")
@@ -146,7 +146,10 @@ elif platform.system() == "Linux":
         for lib_dir in lib_dirs:
             if not lib_dir.exists():
                 continue
-            lib_candidates.extend(sorted(lib_dir.glob("libblosc2.so*")))
+            if platform.system() == "Darwin":
+                lib_candidates.extend(sorted(lib_dir.glob("libblosc2*.dylib")))
+            else:
+                lib_candidates.extend(sorted(lib_dir.glob("libblosc2.so*")))
 
         loaded = False
         for lib_path in lib_candidates:
