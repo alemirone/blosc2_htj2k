@@ -48,6 +48,101 @@ or by editing a deployment manifest, for example:
 }
 ```
 
+## Blosc2 Plugin Loading Principles
+
+There are two independent plugin layers when HTJ2K data is read or written
+through HDF5:
+
+1. The HDF5 layer must find the Blosc2 HDF5 filter.  This filter owns HDF5
+   filter id `32026` and is normally discovered with `HDF5_PLUGIN_PATH`.
+2. The Blosc2 layer must then resolve codec id `40`, whose registry name is
+   `htj2k`.  c-blosc2 first tries to load `libblosc2_htj2k.so` directly.  If
+   that fails and `python` or `python3` is callable, c-blosc2 runs a short
+   discovery helper:
+
+   ```bash
+   python -c "import blosc2_htj2k; blosc2_htj2k.print_libpath()"
+   ```
+
+   The Python process only reports the installed codec library path.  It does
+   not perform the HDF5 read/write and it is not embedded into the C++ process.
+
+Once `libblosc2_htj2k` is loaded, backend selection is handled by
+`blosc2_htj2k` itself.  A normal wheel install uses the manifest installed next
+to the library:
+
+```text
+blosc2_htj2k_plugins.json -> htj2k backend priority
+```
+
+For a standard installation, no `BLOSC2_HTJ2K_PLUGIN_PATH` is needed because
+the backend plugins are installed under the default `plugins/` directory next
+to `libblosc2_htj2k`.
+
+Minimal C++/HDF5 configuration when Python is callable and can import the
+installed `blosc2_htj2k` package:
+
+```bash
+export HDF5_PLUGIN_PATH=/path/to/hdf5/plugins
+./my_hdf5_reader_or_writer
+```
+
+In this mode HDF5 finds the Blosc2 filter, and c-blosc2 can ask Python where
+the `blosc2_htj2k` codec library was installed if the dynamic loader cannot
+find it directly.
+
+Minimal C++/HDF5 configuration for systems where Python must not be called:
+
+```bash
+export HDF5_PLUGIN_PATH=/path/to/hdf5/plugins
+export LD_LIBRARY_PATH=/path/to/site-packages/blosc2_htj2k:${LD_LIBRARY_PATH:-}
+./my_hdf5_reader_or_writer
+```
+
+Use `PATH` instead of `LD_LIBRARY_PATH` on Windows, and `DYLD_LIBRARY_PATH` on
+macOS where it is permitted.  If backend plugins are not installed in the
+default location next to `libblosc2_htj2k`, also set:
+
+```bash
+export BLOSC2_HTJ2K_PLUGIN_PATH=/path/to/site-packages/blosc2_htj2k/plugins
+```
+
+These variables solve different parts of the chain: `LD_LIBRARY_PATH` makes the
+main codec library discoverable, while `BLOSC2_HTJ2K_PLUGIN_PATH` only changes
+where the already-loaded codec library searches for backend plugins.
+
+For Python programs, prefer explicit loading and configuration before opening
+or creating HDF5 datasets:
+
+```python
+import hdf5plugin
+import blosc2_htj2k
+import h5py
+
+blosc2_htj2k.configure()  # use the manifest priority
+
+with h5py.File("data.h5", "r") as h5f:
+    data = h5f["entry/data"][...]
+```
+
+Use `blosc2_htj2k.configure(backend="openhtj2k")`,
+`blosc2_htj2k.configure(backend="grok")`, or
+`blosc2_htj2k.configure(backend="kakadu")` only when a deployment needs to
+force a backend and bypass the manifest priority.
+
+If a Python session has already let HDF5 load the Blosc2 filter from
+`HDF5_PLUGIN_PATH` before `import hdf5plugin`, force the Python-side HDF5 filter
+registration:
+
+```python
+import hdf5plugin
+hdf5plugin.register("blosc2", force=True)
+```
+
+Backend configuration must still happen before the first HTJ2K encode/decode
+in the process.  After first codec use, `blosc2_htj2k.configure()` deliberately
+refuses to change the runtime backend; restart the process or configure earlier.
+
 ## Plugin Philosophy
 
 The package follows the same philosophy as the `blosc2_grok` prototype, but
