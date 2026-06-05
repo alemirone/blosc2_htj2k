@@ -336,7 +336,7 @@ PY
 # Install the HTJ2K plugin.  The default manifest selects kakadu first when it
 # is usable, then openhtj2k.  No BLOSC2_HTJ2K_BACKEND variable is needed for
 # this test.
-git clone --recursive https://github.com/alemirone/blosc2_htj2k.git
+git clone --recursive https://github.com/Blosc/blosc2_htj2k.git
 python -m pip install -v --no-build-isolation --no-deps ./blosc2_htj2k
 
 export HTJ2K_PACKAGE="$(python -c 'from pathlib import Path; import blosc2_htj2k; print(Path(blosc2_htj2k.__file__).resolve().parent)')"
