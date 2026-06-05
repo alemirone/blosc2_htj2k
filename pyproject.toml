@@ -17,7 +17,7 @@ readme = "README.md"
 authors = [
     {name = "Blosc Development Team", email = "contact@blosc.org"},
 ]
-description = "Experimental Blosc2 HTJ2K codec plugin with OpenHTJ2K and optional Kakadu backends."
+description = "Blosc2 HTJ2K codec plugin using official codec id 40, with OpenHTJ2K and optional Kakadu backends."
 keywords = ["plugin", "blosc2"]
 license = {text = "GNU Affero General Public License version 3"}
 classifiers = [
@@ -50,8 +50,8 @@ h5py-test = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/alemirone/blosc2_htj2k"
-Issues = "https://github.com/alemirone/blosc2_htj2k/issues"
+Homepage = "https://github.com/Blosc/blosc2_htj2k"
+Issues = "https://github.com/Blosc/blosc2_htj2k/issues"
 
 [tool.setuptools]
 platforms = [ "any" ]
