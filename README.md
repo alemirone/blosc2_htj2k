@@ -56,9 +56,17 @@ through HDF5:
 1. The HDF5 layer must find the Blosc2 HDF5 filter.  This filter owns HDF5
    filter id `32026` and is normally discovered with `HDF5_PLUGIN_PATH`.
 2. The Blosc2 layer must then resolve codec id `40`, whose registry name is
-   `htj2k`.  c-blosc2 first tries to load `libblosc2_htj2k.so` directly.  If
-   that fails and `python` or `python3` is callable, c-blosc2 runs a short
-   discovery helper:
+   `htj2k`.
+
+c-blosc2 does not start Python first.  The normal C/C++ loading path is:
+
+1. Try to load the codec library directly with the platform dynamic loader
+   (`libblosc2_htj2k.so`, `libblosc2_htj2k.dylib`, or `blosc2_htj2k.dll`).
+   This uses the usual runtime library search paths: RPATH, system library
+   directories, `LD_LIBRARY_PATH` on Linux, `DYLD_LIBRARY_PATH` on macOS where
+   permitted, or `PATH` on Windows.
+2. Only if that direct lookup fails, and only if `python` or `python3` is
+   callable, c-blosc2 can run a short optional discovery helper:
 
    ```bash
    python -c "import blosc2_htj2k; blosc2_htj2k.print_libpath()"
@@ -79,8 +87,36 @@ For a standard installation, no `BLOSC2_HTJ2K_PLUGIN_PATH` is needed because
 the backend plugins are installed under the default `plugins/` directory next
 to `libblosc2_htj2k`.
 
-Minimal C++/HDF5 configuration when Python is callable and can import the
-installed `blosc2_htj2k` package:
+The relevant environment variables are:
+
+```bash
+export HDF5_PLUGIN_PATH=/path/to/hdf5/plugins
+export LD_LIBRARY_PATH=/path/to/site-packages/blosc2_htj2k:${LD_LIBRARY_PATH:-}
+export BLOSC2_HTJ2K_PLUGIN_PATH=/path/to/site-packages/blosc2_htj2k/plugins
+export BLOSC2_HTJ2K_BACKEND=openhtj2k
+```
+
+`HDF5_PLUGIN_PATH` is for HDF5 filter discovery.  `LD_LIBRARY_PATH` (or the
+platform equivalent) is for the main codec library.  `BLOSC2_HTJ2K_PLUGIN_PATH`
+and `BLOSC2_HTJ2K_BACKEND` are only for backend discovery/selection after the
+codec library has already been loaded.
+
+The direct search for `libblosc2_htj2k.so` follows the platform dynamic-loader
+rules:
+
+- Linux: RPATH/RUNPATH entries, `LD_LIBRARY_PATH`, the `ld.so` cache, and
+  system library directories such as `/lib` and `/usr/lib`.
+- macOS: install names, `@rpath`/`LC_RPATH`, `DYLD_LIBRARY_PATH`, and
+  `DYLD_FALLBACK_LIBRARY_PATH`, subject to the usual macOS loader restrictions.
+- Windows: the DLL search path, including the application directory, system
+  directories, directories added with `AddDllDirectory()`/`SetDllDirectory()`,
+  and `PATH`.
+
+`BLOSC2_HTJ2K_PLUGIN_PATH` is not used to find `libblosc2_htj2k.so`; it is used
+by `libblosc2_htj2k` after loading, to find backend plugin directories.
+
+Minimal C++/HDF5 configuration in a Python environment where `python` or
+`python3` is callable and can import the installed `blosc2_htj2k` package:
 
 ```bash
 export HDF5_PLUGIN_PATH=/path/to/hdf5/plugins
@@ -89,7 +125,9 @@ export HDF5_PLUGIN_PATH=/path/to/hdf5/plugins
 
 In this mode HDF5 finds the Blosc2 filter, and c-blosc2 can ask Python where
 the `blosc2_htj2k` codec library was installed if the dynamic loader cannot
-find it directly.
+find it directly.  With the standard wheel layout and the backend plugins
+installed next to `libblosc2_htj2k`, `LD_LIBRARY_PATH`,
+`BLOSC2_HTJ2K_PLUGIN_PATH`, and `BLOSC2_HTJ2K_BACKEND` are not required.
 
 Minimal C++/HDF5 configuration for systems where Python must not be called:
 
@@ -106,10 +144,6 @@ default location next to `libblosc2_htj2k`, also set:
 ```bash
 export BLOSC2_HTJ2K_PLUGIN_PATH=/path/to/site-packages/blosc2_htj2k/plugins
 ```
-
-These variables solve different parts of the chain: `LD_LIBRARY_PATH` makes the
-main codec library discoverable, while `BLOSC2_HTJ2K_PLUGIN_PATH` only changes
-where the already-loaded codec library searches for backend plugins.
 
 For Python programs, prefer explicit loading and configuration before opening
 or creating HDF5 datasets:
