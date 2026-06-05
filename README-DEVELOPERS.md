@@ -19,9 +19,9 @@ For Linux:
 CMAKE_BUILD_PARALLEL_LEVEL=10 python -m cibuildwheel --only 'cp311-manylinux_x86_64'
 ```
 
-By default the build downloads and compiles OpenHTJ2K PR190 when no
-OpenHTJ2K installation is provided.  To require a pre-existing OpenHTJ2K
-installation instead, pass:
+By default the build downloads and compiles the official OpenHTJ2K `v0.4.0`
+release when no OpenHTJ2K installation is provided.  To require a pre-existing
+OpenHTJ2K installation instead, pass:
 
 ```shell
 CMAKE_ARGS="-DBLOSC2_HTJ2K_BUILD_OPENHTJ2K=OFF" python -m pip install -v --no-build-isolation .

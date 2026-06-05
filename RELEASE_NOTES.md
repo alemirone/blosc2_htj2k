@@ -7,9 +7,9 @@
 * Add an always-built J2K Grok replacement backend for testing the plugin path.
 * Add optional Kakadu J2K/HTJ2K backends when Kakadu headers/libraries are
   available locally.
-* Add an optional OpenHTJ2K HTJ2K backend when the PR #190-style `uint16` API
-  is detected by CMake.
-* Build OpenHTJ2K PR190 automatically during `pip install .` when no
+* Add an optional OpenHTJ2K HTJ2K backend when the `uint16` C++ API available
+  in OpenHTJ2K `v0.4.0` and newer is detected by CMake.
+* Build OpenHTJ2K `v0.4.0` automatically during `pip install .` when no
   OpenHTJ2K installation is configured, and bundle its runtime library next to
   the HTJ2K backend plugin.
 * Add explicit runtime configuration APIs:

@@ -217,16 +217,16 @@ endif()
 # with the public C++ encoder/decoder interface is available.
 set(OPENHTJ2K_ROOT "" CACHE PATH "OpenHTJ2K installation root")
 set(OPENHTJ2K_LIBRARY_DIR "" CACHE PATH "OpenHTJ2K library directory")
-option(BLOSC2_HTJ2K_BUILD_OPENHTJ2K "Download and build OpenHTJ2K PR190 when no OpenHTJ2K installation is found" ON)
+option(BLOSC2_HTJ2K_BUILD_OPENHTJ2K "Download and build OpenHTJ2K when no OpenHTJ2K installation is found" ON)
 if(WIN32)
     set(BLOSC2_HTJ2K_BUILD_OPENHTJ2K OFF CACHE BOOL "Disable bundled OpenHTJ2K on Windows for now" FORCE)
 endif()
 set(BLOSC2_HTJ2K_OPENHTJ2K_REPOSITORY "https://github.com/osamu620/OpenHTJ2K.git"
     CACHE STRING "OpenHTJ2K repository used by the optional in-tree build")
-set(BLOSC2_HTJ2K_OPENHTJ2K_GIT_TAG "refs/pull/190/head"
-    CACHE STRING "OpenHTJ2K git ref used by the optional in-tree build")
+set(BLOSC2_HTJ2K_OPENHTJ2K_GIT_TAG "v0.4.0"
+    CACHE STRING "OpenHTJ2K git tag or ref used by the optional in-tree build")
 set(BLOSC2_HTJ2K_OPENHTJ2K_GIT_COMMIT "014011530be3d6217b0f8814a9ab0ca25583bd64"
-    CACHE STRING "Expected OpenHTJ2K commit used by the optional in-tree build")
+    CACHE STRING "Expected OpenHTJ2K commit when the optional in-tree build uses a raw git ref")
 set(BLOSC2_HTJ2K_OPENHTJ2K_SOURCE_DIR "" CACHE PATH
     "Existing OpenHTJ2K source tree used by the optional in-tree build")
 set(BLOSC2_HTJ2K_OPENHTJ2K_INSTALL_DIR "" CACHE PATH
@@ -243,8 +243,8 @@ elseif(NOT BLOSC2_HTJ2K_OPENHTJ2K_SOURCE_DIR AND DEFINED ENV{OPENHTJ2K_SOURCE_DI
     set(BLOSC2_HTJ2K_OPENHTJ2K_SOURCE_DIR "$ENV{OPENHTJ2K_SOURCE_DIR}")
 elseif(NOT BLOSC2_HTJ2K_OPENHTJ2K_SOURCE_DIR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/openhtj2k/CMakeLists.txt")
     set(BLOSC2_HTJ2K_OPENHTJ2K_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/openhtj2k")
-elseif(NOT BLOSC2_HTJ2K_OPENHTJ2K_SOURCE_DIR AND EXISTS "${CMAKE_SOURCE_DIR}/../OpenHTJ2K_PR190/CMakeLists.txt")
-    set(BLOSC2_HTJ2K_OPENHTJ2K_SOURCE_DIR "${CMAKE_SOURCE_DIR}/../OpenHTJ2K_PR190")
+elseif(NOT BLOSC2_HTJ2K_OPENHTJ2K_SOURCE_DIR AND EXISTS "${CMAKE_SOURCE_DIR}/../OpenHTJ2K/CMakeLists.txt")
+    set(BLOSC2_HTJ2K_OPENHTJ2K_SOURCE_DIR "${CMAKE_SOURCE_DIR}/../OpenHTJ2K")
 endif()
 if(DEFINED ENV{OPENHTJ2K_INCLUDE_DIR})
     list(APPEND OPENHTJ2K_INCLUDE_HINTS "$ENV{OPENHTJ2K_INCLUDE_DIR}")
@@ -275,7 +275,7 @@ if(BLOSC2_HTJ2K_BUILD_OPENHTJ2K AND (NOT OPENHTJ2K_INCLUDE_DIR OR NOT OPENHTJ2K_
 
     if(NOT BLOSC2_HTJ2K_OPENHTJ2K_INSTALL_DIR)
         set(BLOSC2_HTJ2K_OPENHTJ2K_INSTALL_DIR
-            "${CMAKE_BINARY_DIR}/openhtj2k_pr190_install")
+            "${CMAKE_BINARY_DIR}/openhtj2k_install")
     endif()
     get_filename_component(BLOSC2_HTJ2K_OPENHTJ2K_INSTALL_DIR
         "${BLOSC2_HTJ2K_OPENHTJ2K_INSTALL_DIR}" ABSOLUTE)
@@ -308,7 +308,7 @@ if(BLOSC2_HTJ2K_BUILD_OPENHTJ2K AND (NOT OPENHTJ2K_INCLUDE_DIR OR NOT OPENHTJ2K_
         )
     endif()
 
-    ExternalProject_Add(openhtj2k_pr190_external
+    ExternalProject_Add(openhtj2k_external
         ${OPENHTJ2K_EXTERNAL_SOURCE_ARGS}
         CMAKE_ARGS
             -DCMAKE_BUILD_TYPE=Release
@@ -324,22 +324,22 @@ if(BLOSC2_HTJ2K_BUILD_OPENHTJ2K AND (NOT OPENHTJ2K_INCLUDE_DIR OR NOT OPENHTJ2K_
     set(OPENHTJ2K_LIBRARY
         "${OPENHTJ2K_LIBRARY_DIR}/${CMAKE_SHARED_LIBRARY_PREFIX}open_htj2k_R${CMAKE_SHARED_LIBRARY_SUFFIX}")
     set(OPENHTJ2K_BUILT_BY_PROJECT ON)
-    add_library(openhtj2k_pr190_imported SHARED IMPORTED GLOBAL)
-    set_target_properties(openhtj2k_pr190_imported PROPERTIES
+    add_library(openhtj2k_imported SHARED IMPORTED GLOBAL)
+    set_target_properties(openhtj2k_imported PROPERTIES
         IMPORTED_LOCATION "${OPENHTJ2K_LIBRARY}")
-    add_dependencies(openhtj2k_pr190_imported openhtj2k_pr190_external)
+    add_dependencies(openhtj2k_imported openhtj2k_external)
     if(NOT BLOSC2_HTJ2K_OPENHTJ2K_SOURCE_DIR)
         message(STATUS "OpenHTJ2K will be downloaded and built from ${BLOSC2_HTJ2K_OPENHTJ2K_REPOSITORY} (${BLOSC2_HTJ2K_OPENHTJ2K_GIT_TAG})")
     endif()
 endif()
 
-unset(OPENHTJ2K_HAS_PR190_UINT16_API)
-unset(OPENHTJ2K_HAS_PR190_UINT16_API CACHE)
+unset(OPENHTJ2K_HAS_UINT16_API)
+unset(OPENHTJ2K_HAS_UINT16_API CACHE)
 if(OPENHTJ2K_BUILT_BY_PROJECT)
-    # The downloaded source is pinned to the PR190-style API.  The headers and
-    # library are produced during the build step, so a configure-time
-    # compile/link probe cannot run yet.
-    set(OPENHTJ2K_HAS_PR190_UINT16_API TRUE)
+    # The bundled source is pinned to an OpenHTJ2K release with the required
+    # uint16-capable C++ API.  The headers and library are produced during the
+    # build step, so a configure-time compile/link probe cannot run yet.
+    set(OPENHTJ2K_HAS_UINT16_API TRUE)
 elseif(OPENHTJ2K_INCLUDE_DIR AND OPENHTJ2K_LIBRARY)
     include(CheckCXXSourceCompiles)
     set(CMAKE_REQUIRED_INCLUDES_SAVE "${CMAKE_REQUIRED_INCLUDES}")
@@ -364,17 +364,17 @@ elseif(OPENHTJ2K_INCLUDE_DIR AND OPENHTJ2K_LIBRARY)
             open_htj2k::openhtj2k_decoder decoder(bytes, sizeof(bytes), 0, 0);
             return 0;
         }
-    " OPENHTJ2K_HAS_PR190_UINT16_API)
+    " OPENHTJ2K_HAS_UINT16_API)
     set(CMAKE_REQUIRED_INCLUDES "${CMAKE_REQUIRED_INCLUDES_SAVE}")
     set(CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES_SAVE}")
 endif()
 
-if(OPENHTJ2K_INCLUDE_DIR AND OPENHTJ2K_LIBRARY AND OPENHTJ2K_HAS_PR190_UINT16_API)
+if(OPENHTJ2K_INCLUDE_DIR AND OPENHTJ2K_LIBRARY AND OPENHTJ2K_HAS_UINT16_API)
     add_library(blosc2_openhtj2k_backend SHARED b2nd_layout.cpp plugin/openhtj2k_backend.cpp plugin/htj2k_openhtj2k_plugin.cpp)
     target_include_directories(blosc2_openhtj2k_backend PRIVATE ${OPENHTJ2K_INCLUDE_DIR} ${BLOSC2_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/plugin)
     if(OPENHTJ2K_BUILT_BY_PROJECT)
-        target_link_libraries(blosc2_openhtj2k_backend PRIVATE openhtj2k_pr190_imported)
-        add_dependencies(blosc2_openhtj2k_backend openhtj2k_pr190_external)
+        target_link_libraries(blosc2_openhtj2k_backend PRIVATE openhtj2k_imported)
+        add_dependencies(blosc2_openhtj2k_backend openhtj2k_external)
     else()
         target_link_libraries(blosc2_openhtj2k_backend PRIVATE ${OPENHTJ2K_LIBRARY})
     endif()
@@ -410,7 +410,7 @@ if(OPENHTJ2K_INCLUDE_DIR AND OPENHTJ2K_LIBRARY AND OPENHTJ2K_HAS_PR190_UINT16_AP
     )
     message(STATUS "OpenHTJ2K backend enabled")
 else()
-    message(STATUS "OpenHTJ2K backend disabled (headers/libraries missing, or PR190 uint16 API probe failed)")
+    message(STATUS "OpenHTJ2K backend disabled (headers/libraries missing, or uint16 API probe failed)")
 endif()
 
 # Test program

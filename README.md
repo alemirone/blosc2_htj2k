@@ -213,7 +213,7 @@ Backend capabilities:
 
 | Backend | Built when | HTJ2K | `uint8` | `uint16` | `uint32` | Redistributable |
 | --- | --- | --- | --- | --- | --- | --- |
-| `plugins/htj2k/openhtj2k` | OpenHTJ2K PR190-style API found or built | yes | yes | yes | no | yes |
+| `plugins/htj2k/openhtj2k` | OpenHTJ2K `v0.4.0` API found or built | yes | yes | yes | no | yes |
 | `plugins/htj2k/grok` | always | yes, lossless path | yes | yes | no | yes |
 | `plugins/htj2k/kakadu` | Kakadu found | yes | yes | yes | yes | no |
 
@@ -916,12 +916,12 @@ The current tests cover:
   older c-blosc2 build through the public user-codec API.
 - Kakadu is optional and not redistributable.
 - OpenHTJ2K is the redistributable open-source backend, currently based on the
-  PR190-style `uint16` API.
+  `uint16` C++ API available in OpenHTJ2K `v0.4.0` and newer.
 - Grok is installed as an explicit HTJ2K backend, but its HTJ2K rate-control
   path is not used here; select OpenHTJ2K or Kakadu for lossy/rate-target
   tests.
-- OpenHTJ2K currently handles the PR190-style `uint16` path; the optional
-  Kakadu backend also supports `uint32`.
+- OpenHTJ2K currently handles the `uint16` path; the optional Kakadu backend
+  also supports `uint32`.
 - For Kakadu `uint32`, the default wavelet decomposition is capped at
   `Clevels=3` for robust small-chunk operation. Advanced users can override it
   with `BLOSC2_HTJ2K_CLEVELS` or `BLOSC2_HTJ2K_KAKADU_PARAMS`.

@@ -43,7 +43,7 @@ HTJ2K_CODEC_PLUGIN_EXPORT htj2k_codec_plugin_t HTJ2K_CODEC_PLUGIN = {
     HTJ2K_CODEC_PLUGIN_ABI_VERSION,
     sizeof(htj2k_codec_plugin_t),
     "OpenHTJ2K",
-    "PR190-or-newer",
+    "v0.4.0-or-newer",
     {
         blosc2_openhtj2k_supports,
         blosc2_openhtj2k_encoder,
