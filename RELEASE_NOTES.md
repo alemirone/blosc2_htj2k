@@ -1,5 +1,18 @@
 # Release notes
 
+## Changes from 0.3.6 to 0.4.0
+
+* Use the official Blosc2 global codec id 40 for HTJ2K.
+* Require python-blosc2 4.4.3 or newer, which exposes the official HTJ2K codec
+  id and removes the need for a temporary python-blosc2 branch.
+* Update installation and quickstart documentation for the Blosc organization
+  repositories and upstream c-blosc2/python-blosc2 packages.
+* Add Trusted Publishing configuration for PyPI wheel uploads from GitHub
+  Actions.
+* Document the current HDF5 status: direct Blosc2 usage works with
+  python-blosc2 4.4.3, while transparent HDF5 workflows need an HDF5 Blosc2
+  filter built against a c-blosc2 runtime that knows codec id 40.
+
 ## Changes from 0.3.5 to 0.3.6
 
 * Add a runtime backend plugin mechanism for J2K and HTJ2K codecs.
