@@ -14,7 +14,7 @@ try:
     import blosc2_htj2k
 except RuntimeError as exc:
     if "official 'htj2k' codec id" in str(exc):
-        pytest.skip("requires patched python-blosc2 registry", allow_module_level=True)
+        pytest.skip("requires python-blosc2 with official HTJ2K registry", allow_module_level=True)
     raise
 
 
@@ -38,9 +38,9 @@ def _load_blosc2_shared_library():
     raise FileNotFoundError("Could not locate libblosc2 for registry checks")
 
 
-def test_htj2k_global_registry_id_with_patched_python_blosc2():
+def test_htj2k_global_registry_id_with_official_python_blosc2():
     if os.environ.get("BLOSC2_EXPECT_GLOBAL_CODEC_IDS") != "1":
-        pytest.skip("global codec-id check only runs with patched python-blosc2")
+        pytest.skip("global codec-id check only runs when official codec IDs are expected")
     lib = _load_blosc2_shared_library()
     lib.blosc2_init.argtypes = []
     lib.blosc2_init.restype = None
@@ -510,7 +510,7 @@ print(json.dumps({"skipped": False, "max_abs": max_abs, "mean_abs": mean_abs}))
 
 def test_htj2k_hdf5_roundtrip_with_numeric_filter_if_registry_enabled():
     if os.environ.get("BLOSC2_EXPECT_GLOBAL_CODEC_IDS") != "1":
-        pytest.skip("HDF5 registry-aware check only runs with patched python-blosc2")
+        pytest.skip("HDF5 registry-aware check only runs when official codec IDs are expected")
     code = r"""
 import json
 import tempfile

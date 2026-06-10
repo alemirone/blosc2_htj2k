@@ -1,5 +1,5 @@
 scikit-build-core
 cython>=3
 numpy>=2.1
-blosc2>=4.0.0b1
+blosc2>=4.4.3
 cibuildwheel

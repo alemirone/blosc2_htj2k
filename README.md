@@ -224,10 +224,10 @@ remains the preferred redistributable backend for normal HTJ2K testing.
 
 ## Hands-On Quick Start
 
-For now this plugin depends on a `python-blosc2` build that exposes the
-J2K/HTJ2K codec IDs and ships c-blosc2 headers with
-`b2nd_deserialize_meta_inline()` (`c-blosc2 >= 3.1.0`).  The plugin uses that
-header-only helper instead of linking to the non-inline B2ND symbol.
+This plugin depends on `python-blosc2 >= 4.4.3`, which exposes the J2K/HTJ2K
+codec IDs and ships a c-blosc2 runtime that knows the official registry entries.
+The plugin uses the inline `b2nd_deserialize_meta_inline()` helper instead of
+linking to the non-inline B2ND symbol.
 
 This quickstart builds `hdf5plugin` from source and links its Blosc2 HDF5
 filter against the same current c-blosc2 runtime installed by `python-blosc2`.
@@ -273,14 +273,8 @@ echo "Using quickstart directory: $PWD"
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip setuptools wheel
-python -m pip install scikit-build-core cython numpy pkgconfig py-cpuinfo h5py
+python -m pip install scikit-build-core cython numpy pkgconfig py-cpuinfo h5py "blosc2>=4.4.3"
 export CMAKE_BUILD_PARALLEL_LEVEL=20
-
-# Install python-blosc2 from the JPEG2000 branch.  This branch bundles the
-# official Blosc/c-blosc2 main runtime in site-packages/blosc2/lib.
-git clone https://github.com/alemirone/python-blosc2.git
-git -C python-blosc2 checkout add_j2k_htj2k_custom_codecs
-python -m pip install -v --no-build-isolation ./python-blosc2
 
 export BLOSC2_PACKAGE="$(python -c 'from pathlib import Path; import blosc2; print(Path(blosc2.__file__).resolve().parent)')"
 export LD_LIBRARY_PATH="${BLOSC2_PACKAGE}/lib:${LD_LIBRARY_PATH:-}"
@@ -301,7 +295,7 @@ includedir=${{prefix}}/include
 
 Name: blosc2
 Description: High performance meta-compressor optimized for binary data
-Version: 3.1.3.dev
+Version: 3.1.3
 Libs: -L${{libdir}} -l:libblosc2.so.8
 Cflags: -I${{includedir}}
 """)
@@ -316,7 +310,7 @@ print("HTJ2K codec:", blosc2.Codec.HTJ2K)
 PY
 
 # Build hdf5plugin from source, but only its Blosc2 HDF5 filter, and link it to
-# the c-blosc2 runtime installed by python-blosc2 above.
+# the c-blosc2 runtime installed by the blosc2 wheel above.
 git clone https://github.com/silx-kit/hdf5plugin.git
 rm -rf hdf5plugin/build hdf5plugin/src/hdf5plugin.egg-info
 HDF5PLUGIN_SYSTEM_LIBRARIES=blosc2 \
@@ -384,10 +378,8 @@ export HTJ2K_PACKAGE="$(python -c 'from pathlib import Path; import blosc2_htj2k
 export LD_LIBRARY_PATH="${BLOSC2_PACKAGE}/lib:${HTJ2K_PACKAGE}:${LD_LIBRARY_PATH:-}"
 ```
 
-Once the `python-blosc2` codec enum changes are released, the clone/build step
-collapses back to a normal released `blosc2` dependency.  Once PyPI
-`hdf5plugin` is rebuilt against a c-blosc2 release containing codec id `40`,
-the local `hdf5plugin` build step can also collapse back to a normal
+Once PyPI `hdf5plugin` is rebuilt against a c-blosc2 release containing codec id
+`40`, the local `hdf5plugin` build step can also collapse back to a normal
 `hdf5plugin` dependency.
 
 The quickstart script can also be run manually.  The basic lossless example is:
@@ -936,16 +928,17 @@ The current tests cover:
    upstream.
 3. The bundled OpenHTJ2K backend now points to the official OpenHTJ2K `v0.4.0`
    release, whose API contains the changes previously tracked through PR #190.
-4. The remaining upstream consolidation is the python-blosc2 update exposing
-   `blosc2.Codec.HTJ2K`.
-5. Once python-blosc2 and hdf5plugin wheels are rebuilt against a c-blosc2
-   release with codec id `40`, the README demo quickstart and CI workflows can
-   drop the temporary source-build workarounds.
-6. Keep validating Python, C/C++, HDF5, and service-runtime usage on Linux,
+4. python-blosc2 `4.4.3` exposes `blosc2.Codec.HTJ2K` and ships a c-blosc2
+   runtime that resolves codec id `40`.
+5. The README demo quickstart and CI workflows now use the released
+   `blosc2>=4.4.3` dependency instead of a temporary python-blosc2 branch.
+6. Once hdf5plugin wheels are rebuilt against a c-blosc2 release with codec id
+   `40`, the README demo can drop the local hdf5plugin source-build workaround.
+7. Keep validating Python, C/C++, HDF5, and service-runtime usage on Linux,
    macOS, and Windows wheels.
-7. Keep the bootstrap only as a loader-order helper for HDF5-only deployments.
-8. Keep the backend ABI independent from the Blosc2-facing codec.
-9. Keep OpenHTJ2K as the preferred redistributable backend, Grok as an
+8. Keep the bootstrap only as a loader-order helper for HDF5-only deployments.
+9. Keep the backend ABI independent from the Blosc2-facing codec.
+10. Keep OpenHTJ2K as the preferred redistributable backend, Grok as an
    always-installed fallback, and Kakadu as an optional external backend.
 
 ## More Examples
