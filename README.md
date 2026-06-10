@@ -48,6 +48,18 @@ or by editing a deployment manifest, for example:
 }
 ```
 
+## Current HDF5 Status
+
+The `blosc2_htj2k` wheel can be published and installed independently of
+`hdf5plugin`.  Direct Blosc2/Python/C++ use only needs `blosc2>=4.4.3`.
+
+Transparent HDF5 reads and writes also need the HDF5 Blosc2 filter
+(`libh5blosc2`) built against a c-blosc2 runtime that knows codec id `40`.
+Until PyPI `hdf5plugin` wheels are rebuilt with such a runtime, HDF5 examples
+use a local `hdf5plugin` source build or an equivalent `libh5blosc2` exposed
+through `HDF5_PLUGIN_PATH`.  In practice, this means installing `hdf5plugin`
+from source for HDF5 workflows until a rebuilt wheel is available.
+
 ## Blosc2 Plugin Loading Principles
 
 There are two independent plugin layers when HTJ2K data is read or written
