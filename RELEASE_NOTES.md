@@ -1,5 +1,13 @@
 # Release notes
 
+## Changes from 0.4.0 to 0.4.1
+
+* Fix the OpenHTJ2K decoder wrapper so it follows the upstream buffer
+  ownership contract and no longer risks double-free/corruption on multi-frame
+  stacks.
+* Add a regression test covering repeated roundtrips of chunked HTJ2K stacks
+  with the OpenHTJ2K backend.
+
 ## Changes from 0.3.6 to 0.4.0
 
 * Use the official Blosc2 global codec id 40 for HTJ2K.
