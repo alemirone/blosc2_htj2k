@@ -261,31 +261,34 @@ extern "C" int blosc2_openhtj2k_decoder(
             return -1;
         }
 
-        std::vector<uint32_t> width(num_comps);
-        std::vector<uint32_t> height(num_comps);
-        std::vector<uint8_t> depth(num_comps);
-        std::vector<bool> is_signed(num_comps);
-        std::vector<std::unique_ptr<int32_t[]>> planes;
         std::vector<int32_t*> plane_ptrs;
-        planes.reserve(num_comps);
-        plane_ptrs.reserve(num_comps);
+        std::vector<uint32_t> width;
+        std::vector<uint32_t> height;
+        std::vector<uint8_t> depth;
+        std::vector<bool> is_signed;
+        struct PlaneCleanup {
+            std::vector<int32_t*> &planes;
+            ~PlaneCleanup() {
+                for (int32_t *plane : planes) {
+                    delete[] plane;
+                }
+            }
+        } cleanup{plane_ptrs};
+        decoder.invoke(plane_ptrs, width, height, depth, is_signed);
+        if (plane_ptrs.size() != num_comps || width.size() != num_comps ||
+            height.size() != num_comps || depth.size() != num_comps ||
+            is_signed.size() != num_comps) {
+            return -1;
+        }
 
         for (uint16_t c = 0; c < num_comps; ++c) {
-            width[c] = decoder.get_component_width(c);
-            height[c] = decoder.get_component_height(c);
-            depth[c] = decoder.get_component_depth(c);
-            is_signed[c] = decoder.get_component_signedness(c);
             if (c > 0 && (width[c] != width[0] || height[c] != height[0])) {
                 return -1;
             }
             if (is_signed[c] || depth[c] > 16) {
                 return -1;
             }
-            planes.emplace_back(new int32_t[static_cast<size_t>(width[c]) * height[c]]);
-            plane_ptrs.push_back(planes.back().get());
         }
-
-        decoder.invoke(plane_ptrs, width, height, depth, is_signed);
 
         uint8_t max_depth = 0;
         for (uint8_t d : depth) {
