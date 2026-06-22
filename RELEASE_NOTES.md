@@ -1,5 +1,14 @@
 # Release notes
 
+## Changes from 0.4.1 to 0.4.2
+
+* Serialize OpenHTJ2K backend encode/decode calls because the upstream
+  OpenHTJ2K C++ API is not safe under concurrent Blosc2 block compression.
+  This fixes failures for 3D stacks stored as one chunk with 2D blocks, e.g.
+  `(10, 128, 128)` chunks with `(1, 128, 128)` blocks.
+* Add a regression test for multithreaded OpenHTJ2K compression of a single
+  3D chunk split into 2D blocks.
+
 ## Changes from 0.4.0 to 0.4.1
 
 * Fix the OpenHTJ2K decoder wrapper so it follows the upstream buffer

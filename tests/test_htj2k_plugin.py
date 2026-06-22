@@ -155,6 +155,47 @@ print(json.dumps({"skipped": False, "shape": list(data.shape)}))
         pytest.skip("OpenHTJ2K backend is not installed")
 
 
+def test_htj2k_openhtj2k_single_chunk_2d_blocks_multithreaded():
+    code = r"""
+import json
+
+import blosc2_htj2k
+
+if "openhtj2k" not in blosc2_htj2k.available_backends()["htj2k"]:
+    print(json.dumps({"skipped": True}))
+    raise SystemExit(0)
+
+import blosc2
+import numpy as np
+
+blosc2_htj2k.register_codec()
+blosc2_htj2k.configure(backend="openhtj2k")
+blosc2.set_nthreads(4)
+
+shape = (10, 64, 96)
+data = (np.arange(np.prod(shape), dtype=np.uint16).reshape(shape) % 4096)
+cparams = {
+    "codec": blosc2_htj2k.CODEC_ID,
+    "filters": [],
+    "splitmode": blosc2.SplitMode.NEVER_SPLIT,
+}
+compressed = blosc2.asarray(
+    data,
+    chunks=data.shape,
+    blocks=(1,) + data.shape[-2:],
+    cparams=cparams,
+)
+decoded = compressed[...]
+np.testing.assert_array_equal(decoded, data)
+print(json.dumps({"skipped": False, "shape": list(data.shape), "cbytes": int(compressed.schunk.cbytes)}))
+"""
+    proc = subprocess.run([sys.executable, "-c", code], text=True, capture_output=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    payload = json.loads(_last_json_line(proc.stdout))
+    if payload["skipped"]:
+        pytest.skip("OpenHTJ2K backend is not installed")
+
+
 def test_htj2k_lossy_roundtrip_with_available_plugins():
     code = r"""
 import json

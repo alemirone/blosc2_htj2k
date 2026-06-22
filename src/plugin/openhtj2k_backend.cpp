@@ -15,6 +15,7 @@
 #include <cstring>
 #include <exception>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 #include "blosc2.h"
@@ -43,6 +44,11 @@ using blosc2_htj2k_detail::image_layout_from_b2nd;
 using blosc2_htj2k_detail::read_b2nd_layout;
 
 constexpr uint8_t OPENHTJ2K_NO_QFACTOR = 0xFF;
+
+std::mutex &openhtj2k_codec_mutex() {
+    static std::mutex mutex;
+    return mutex;
+}
 
 // Read transparent Blosc2 b2nd layout and map (..., Y, X[, C]) to codec
 // coordinates X/Y plus component count.
@@ -140,6 +146,7 @@ extern "C" int blosc2_openhtj2k_encoder(
     const htj2k_codec_request_t *request
 ) {
     const bool debug = std::getenv("BLOSC2_HTJ2K_DEBUG") != nullptr;
+    std::lock_guard<std::mutex> lock(openhtj2k_codec_mutex());
     if (!blosc2_openhtj2k_supports(request)) {
         if (debug) {
             fprintf(stderr, "[blosc2_htj2k] OpenHTJ2K encode does not support this HTJ2K request\n");
@@ -253,6 +260,7 @@ extern "C" int blosc2_openhtj2k_decoder(
     const htj2k_codec_request_t * /*request*/
 ) {
     const bool debug = std::getenv("BLOSC2_HTJ2K_DEBUG") != nullptr;
+    std::lock_guard<std::mutex> lock(openhtj2k_codec_mutex());
     try {
         open_htj2k::openhtj2k_decoder decoder(input, static_cast<size_t>(input_len), 0, 0);
         decoder.parse();

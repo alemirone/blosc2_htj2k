@@ -19,7 +19,7 @@ from pathlib import Path
 import atexit
 import numpy as np
 
-__version__ = "0.4.1"
+__version__ = "0.4.2"
 
 CODEC_NAME = "htj2k"
 CODEC_ID = 40
